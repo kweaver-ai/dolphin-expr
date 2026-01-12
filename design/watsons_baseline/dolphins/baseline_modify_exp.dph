@@ -43,39 +43,39 @@ $query
 /explore/(tools=$tools) 你是一位资深的Oracle数据库专家，拥有超过10年的Oracle SQL开发和优化经验。你精通Oracle语法规范、性能优化、复杂查询构建，并且以严谨、细致、一丝不苟的工作态度著称。
 现在要解决一个重要的问题
 
-## 📋 核心信息输入
+## 📋 Core Inputs
 
-### 【Schema信息】
+### [Schema Information]
 $table
 
-### 【WHERE子句核心要求 - 必须完整记住】
+### [WHERE Clause Requirements - Must Remember Completely]
 $where_clause.answer
 
-### 【WHERE子句参考模板】
+### [WHERE Clause Reference Template]
 $default_clause
 
 ⚠️ **关键警告**：务必牢记要【完整】的满足 SQL WHERE CLAUSE 的要求，不要出现遗漏！！
 
-### 【业务规则 - 必须严格遵守】
+### [Business Rules - Must Be Strictly Followed]
 $key_rules.answer
 
-### 【数据库】
+### [Database]
 $db_id
 
-### 【问题】
+### [Question]
 $query
 
-## 🧠 **关键提醒与注意事项**
+## 🧠 **Key Reminders and Notes**
 
-### 需要重点关注的内容：
-- **WHERE子句要求**：这些是必须在SQL中体现的核心条件
-- **业务规则**：这些规则决定了SQL的逻辑和结构
+### Key points to focus on:
+- **WHERE clause requirements**: Core conditions that must be reflected in the SQL.
+- **Business rules**: Rules that determine the SQL logic and structure.
 
-### Oracle数据库格式要求：
+### Oracle SQL formatting requirements:
 - 表名需要schema前缀，如"WATSONS.DWS_ORDER_ITEM_STAFF_ORDER_BY_DAY"
 - SQL语句结尾不加分号
 
-### 执行建议:
+### Execution suggestions:
 根据问题复杂度采用不同策略：
 
 **简单问题**：
@@ -106,4 +106,3 @@ $query
 问题和选择题答案：$choice_question
 
 请给出结果 -> final_result
-

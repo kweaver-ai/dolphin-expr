@@ -1,8 +1,11 @@
-# Dolphin Language SDK - 核心依赖
-# 使用本地开发版本：
-# pip install -e ~/dev/github/dolphin
-# 或者添加到 PYTHONPATH:
-# export PYTHONPATH=~/dev/github/dolphin/src:$PYTHONPATH
+# Dolphin Language SDK - core dependencies
+# Use local development version:
+# pip install -e /path/to/dolphin
+# Or add to PYTHONPATH:
+# export PYTHONPATH=/path/to/dolphin/src:$PYTHONPATH
 
-# 实验系统依赖
+# Experiment system dependencies
 pyyaml>=6.0
+pandas>=2.0
+numpy>=1.24
+sqlalchemy>=2.0

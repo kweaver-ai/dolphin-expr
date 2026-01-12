@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-实验分析协调器
+Experiment analysis coordinator
 
-负责协调不同的分析模块：
-- GeneralReporter: 总体报告生成
-- ExecutionAnalyzer: 智能体执行分析
-- ExperimentAnalyzer: 数据加载和处理（重用现有逻辑）
+Coordinates different analysis modules:
+- GeneralReporter: overall report generation
+- ExecutionAnalyzer: agent execution analysis
+- ExperimentAnalyzer: data loading and processing (reuses existing logic)
 """
 
 import argparse
@@ -19,7 +19,7 @@ import yaml
 from pathlib import Path
 from datetime import datetime
 
-# 导入分析模块
+# Import analysis modules
 from experiment_analyzer import ExperimentAnalyzer
 from general_reporter import GeneralReporter
 from execution_analyzer import ExecutionAnalyzer
@@ -28,37 +28,37 @@ from simulation_inject import SimulationInjector
 
 
 class ExperimentCoordinator:
-    """实验分析协调器"""
+    """Experiment analysis coordinator."""
 
     def __init__(self, experiment_path):
         """
-        初始化协调器
+        Initialize the coordinator.
 
         Args:
-            experiment_path: 实验目录路径
+            experiment_path: Path to the experiment directory.
         """
         self.experiment_path = Path(experiment_path)
 
-        # 创建数据加载器（重用现有的ExperimentAnalyzer作为数据加载器）
+        # Create data loader (reuse ExperimentAnalyzer as the data loader)
         self.data_loader = ExperimentAnalyzer(experiment_path)
 
-        # 创建功能模块
+        # Create functional modules
         self.general_reporter = GeneralReporter(self.data_loader)
         self.execution_analyzer = ExecutionAnalyzer(self.data_loader)
         self.summary_analyzer = SummaryAnalyzer(self.data_loader)
-        # 记录本次模拟所使用的benchmark目录（用于加载自定义转换/比较逻辑）
+        # Record the benchmark directory used by simulation (for custom conversion/compare logic)
         self._benchmark_dir = None
 
     def run_general_analysis(self):
-        """运行总体分析并生成报告"""
+        """Run general analysis and generate reports."""
         print("🔍 启动总体分析模式...")
 
-        # 加载实验数据
+        # Load experiment data
         if not self.data_loader.load_experiment_data():
             print("错误: 无法加载实验数据")
             return False
 
-        # 生成总体报告
+        # Generate overall report
         try:
             report_path, csv_path = self.general_reporter.generate_report()
             return True
@@ -70,10 +70,10 @@ class ExperimentCoordinator:
             return False
 
     def run_execution_analysis(self, run_name, case_num):
-        """运行智能体执行分析"""
+        """Run agent execution analysis."""
         print("🔍 启动智能体执行分析模式...")
 
-        # 执行智能体分析
+        # Run agent analysis
         analysis_result = self.execution_analyzer.analyze_execution(run_name, case_num)
         if analysis_result:
             print("\n" + "=" * 60)
@@ -89,12 +89,12 @@ class ExperimentCoordinator:
             return False
 
     def run_summary_analysis(self, run_name, knowledge_path=None):
-        """运行summary分析"""
+        """Run summary analysis."""
         print("🔍 启动Summary分析模式...")
         if knowledge_path:
             print(f"📚 使用业务知识: {knowledge_path}")
 
-        # 执行summary分析
+        # Run summary analysis
         summary_result = self.summary_analyzer.analyze_summary(
             run_name, knowledge_path=knowledge_path
         )
@@ -142,11 +142,11 @@ class ExperimentCoordinator:
         if enable_summary:
             print("📋 将在分析完成后生成跨run汇总报告")
 
-        # 获取CSV文件路径
+        # Get CSV file path
         if report_csv:
             csv_path = Path(report_csv)
         else:
-            # 自动查找最新的general report CSV - 现在在实验目录的reports文件夹中
+            # Auto-detect the latest general report CSV (now under the experiment reports/ directory)
             reports_dir = self.experiment_path / "reports"
             if not reports_dir.exists():
                 print(f"错误: 报告目录不存在: {reports_dir}")
@@ -164,17 +164,17 @@ class ExperimentCoordinator:
             csv_path = max(csv_files, key=lambda f: f.stat().st_mtime)
             print(f"📊 使用最新的报告文件: {csv_path.name}")
 
-        # 读取CSV文件
+        # Read CSV file
         try:
             df = pd.read_csv(csv_path, encoding="utf-8")
         except Exception as e:
             print(f"错误: 无法读取CSV文件: {e}")
             return False
 
-        # 检查是否有整体正确率列
+        # Check whether there is an overall accuracy column
         if "整体正确率" not in df.columns:
             print("警告: CSV文件中没有'整体正确率'列，将根据现有数据计算")
-            # 计算整体正确率
+            # Compute overall accuracy
             run_cols = [col for col in df.columns if col.startswith("run_")]
             if not run_cols:
                 print("错误: 找不到run列")
@@ -193,7 +193,7 @@ class ExperimentCoordinator:
                 f"{acc:.1f}%" if acc is not None else "N/A" for acc in accuracies
             ]
 
-        # 解析可选的单个 case 过滤（支持 1 / 001 / case_001）
+        # Parse optional single-case filter (supports 1 / 001 / case_001)
         def _parse_case_to_index(case_str):
             try:
                 s = case_str.strip().lower()
@@ -201,11 +201,11 @@ class ExperimentCoordinator:
                     if s.startswith(prefix):
                         s = s[len(prefix) :]
                         break
-                # 去掉前导零
+                # Strip leading zeros
                 s = s.lstrip("0") or "0"
                 return int(s)
             except Exception:
-                # 兼容直接从日志尾部的 Final result 文本中解析
+                # Compatibility: parse directly from trailing "Final result" text in logs
                 try:
                     import re
 
@@ -224,11 +224,11 @@ class ExperimentCoordinator:
             print(f"错误: 无法解析 case 参数: {case}")
             return False
 
-        # 先按 case 过滤（若有），再按正确率阈值过滤
+        # Filter by case (if specified), then by accuracy threshold
         filtered_cases = []
         for _, row in df.iterrows():
             if case_index is not None:
-                # 如果指定了具体的case，只处理该case（不管正确率）
+                # If a specific case is provided, process it regardless of accuracy
                 if int(row.get("题目编号", -1)) == case_index:
                     accuracy_str = row["整体正确率"]
                     accuracy = (
@@ -243,7 +243,7 @@ class ExperimentCoordinator:
                         }
                     )
             else:
-                # 没有指定case时，按正确率阈值过滤
+                # If no specific case is provided, filter by accuracy threshold
                 accuracy_str = row["整体正确率"]
                 if accuracy_str != "N/A":
                     accuracy = float(accuracy_str.rstrip("%"))
@@ -281,7 +281,7 @@ class ExperimentCoordinator:
 
         print("=" * 60)
 
-        # 获取所有runs
+        # Get all runs
         run_dirs = sorted(
             [
                 d
@@ -296,7 +296,7 @@ class ExperimentCoordinator:
         print(f"将对 {len(run_dirs)} 个runs中的 {len(filtered_cases)} 个cases进行分析")
         print("=" * 60)
 
-        # 对每个case在所有run中进行分析
+        # Analyze each case across all runs
         total_analyses = len(filtered_cases) * len(run_dirs)
         analysis_count = 0
         success_count = 0
@@ -315,10 +315,10 @@ class ExperimentCoordinator:
                     end=" ",
                 )
 
-                # 检查是否已有分析结果
+                # Check whether an analysis result already exists
                 existing_result = None
-                # 无论是否提供业务知识，只要已有分析报告则跳过；
-                # 如需强制重新分析，请删除对应的分析报告文件。
+                # Skip if an analysis report already exists, regardless of whether knowledge is provided.
+                # To force re-analysis, delete the corresponding analysis report file.
                 existing_result = self.execution_analyzer.load_analysis_result(
                     run_name, case_num
                 )
@@ -328,7 +328,7 @@ class ExperimentCoordinator:
                     success_count += 1
                     continue
 
-                # 执行新的分析
+                # Run a new analysis
                 try:
                     analysis_result = self.execution_analyzer.analyze_execution(
                         run_name,
@@ -344,7 +344,7 @@ class ExperimentCoordinator:
                 except Exception as e:
                     print(f"✗ (错误: {e})")
 
-        # 总结
+        # Summary
         print("\n" + "=" * 60)
         print("📊 跨run分析完成")
         print("=" * 60)
@@ -353,7 +353,7 @@ class ExperimentCoordinator:
         print(f"失败: {total_analyses - success_count} 个")
         print(f"成功率: {success_count/total_analyses*100:.1f}%")
 
-        # 如果启用了summary功能，进行跨run汇总分析
+        # If summary is enabled, run cross-run aggregation
         if enable_summary and success_count > 0:
             print("\n" + "=" * 60)
             print("📋 开始跨run汇总分析...")
@@ -388,7 +388,7 @@ class ExperimentCoordinator:
         if knowledge_path:
             print(f"📚 使用业务知识: {knowledge_path}")
 
-        # 获取要分析的cases
+        # Get cases to analyze
         cases_to_analyze = self._get_cases_to_analyze(run_name, failed_only)
 
         if not cases_to_analyze:
@@ -403,14 +403,14 @@ class ExperimentCoordinator:
         )
         print("=" * 60)
 
-        # 依次分析每个case
+        # Analyze each case sequentially
         results = []
         for i, case_num in enumerate(cases_to_analyze, 1):
             print(f"\n[{i}/{len(cases_to_analyze)}] 分析 Case {case_num}...")
             print("-" * 40)
 
-            # 无论是否提供业务知识，只要已有分析报告则跳过；
-            # 如需强制重新分析，请删除对应的分析报告文件。
+            # Skip if an analysis report already exists, regardless of whether knowledge is provided.
+            # To force re-analysis, delete the corresponding analysis report file.
             existing_result = self.execution_analyzer.load_analysis_result(
                 run_name, case_num
             )
@@ -420,7 +420,7 @@ class ExperimentCoordinator:
                 results.append((case_num, "CACHED", existing_result))
                 continue
 
-            # 执行新的分析
+            # Run a new analysis
             analysis_result = self.execution_analyzer.analyze_execution(
                 run_name, case_num, save_to_file=True, knowledge_path=knowledge_path
             )
@@ -434,7 +434,7 @@ class ExperimentCoordinator:
                 print("❌ 分析失败")
                 results.append((case_num, "FAILED", None))
 
-        # 总结
+        # Summary
         print("\n" + "=" * 60)
         print("📊 批量分析完成")
         print("=" * 60)
@@ -459,12 +459,12 @@ class ExperimentCoordinator:
         Returns:
             case编号列表
         """
-        # 加载实验数据
+        # Load experiment data
         if not self.data_loader.load_experiment_data():
             print("错误: 无法加载实验数据")
             return []
 
-        # 尝试不同的run目录命名格式
+        # Try different run directory naming formats
         run_dir = None
         possible_names = [
             run_name,  # 原始名称
@@ -484,7 +484,7 @@ class ExperimentCoordinator:
             print(f"已尝试: {', '.join(possible_names)}")
             return []
 
-        # 尝试不同的结果文件名
+        # Try different result filenames
         result_file = None
         possible_files = [
             run_dir / "result.yaml",
@@ -510,33 +510,33 @@ class ExperimentCoordinator:
 
             cases_to_analyze = []
 
-            # 根据文件类型处理数据
+            # Handle data based on file type
             if result_file.name == "run_summary.yaml":
-                # run_summary.yaml 格式 - cases 可能在 benchmarks 字段下
+                # run_summary.yaml format: cases may be under the benchmarks field
                 cases_data = results.get("benchmarks", results.get("cases", []))
             else:
-                # result.yaml 格式
+                # result.yaml format
                 cases_data = results if isinstance(results, list) else []
 
-            # 遍历所有cases
+            # Iterate over all cases
             for idx, case_result in enumerate(cases_data):
-                # 获取case编号
+                # Get case identifier
                 case_id = (
                     case_result.get("test_id")
                     or case_result.get("case_id")
                     or case_result.get("id")
                 )
                 if case_id is None:
-                    # 如果没有明确的ID，使用索引+1作为case编号
+                    # If there is no explicit ID, use index+1 as the case ID
                     case_id = idx + 1
                 case_num = str(case_id).lstrip("test_").lstrip("case_").zfill(3)
 
-                # 判断是否正确
+                # Determine correctness
                 is_correct = case_result.get("is_correct", False) or case_result.get(
                     "correct", False
                 )
 
-                # 根据条件决定是否添加到分析列表
+                # Decide whether to include it in the analysis list
                 if failed_only:
                     if not is_correct:
                         cases_to_analyze.append(case_num)
@@ -562,7 +562,7 @@ class ExperimentCoordinator:
             是否成功
         """
         try:
-            # 收集所有分析内容
+            # Collect all analysis contents
             all_analysis_content = []
 
             print("🔍 收集分析内容...")
@@ -580,7 +580,7 @@ class ExperimentCoordinator:
                             with open(analysis_file, "r", encoding="utf-8") as f:
                                 file_content = f.read()
 
-                            # 提取分析内容
+                            # Extract analysis content
                             extracted_content = (
                                 self._extract_analysis_content_from_file(
                                     file_content, f"{run_name}_case_{case_num}.txt"
@@ -594,7 +594,7 @@ class ExperimentCoordinator:
                             continue
 
                 if case_analysis_content:
-                    # 合并该case的所有run分析
+                    # Merge all run analyses for this case
                     case_combined = f"\n\n=== Case {case_num} 跨Run分析汇总 ===\n"
                     case_combined += f"题目: {case_info['query'][:100]}...\n"
                     case_combined += f"正确率: {case_info['accuracy']:.1f}%\n"
@@ -612,24 +612,24 @@ class ExperimentCoordinator:
 
             print(f"✅ 总共收集到 {len(all_analysis_content)} 个case的分析内容")
 
-            # 合并所有分析内容
+            # Merge all analysis contents
             combined_content = "\n\n" + "=" * 80 + "\n\n".join(all_analysis_content)
 
-            # 调用summary分析
+            # Run summary analysis
             print("🔧 开始汇总分析...")
             summary_result = self._call_summary_analysis(
                 combined_content, knowledge_path
             )
 
             if summary_result:
-                # 保存汇总结果到实验目录下的analysis文件夹
+                # Save summary result under the experiment analysis/ directory
                 analysis_dir = self.experiment_path / "analysis"
                 analysis_dir.mkdir(exist_ok=True, parents=True)
 
                 from datetime import datetime
 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                # 生成case列表字符串，限制长度避免文件名过长
+                # Build case-list string; cap length to avoid overly long filenames
                 case_nums = [str(case_info["case_num"]) for case_info in filtered_cases]
                 case_str = "_".join(case_nums[:10])  # 最多取前10个case，避免文件名过长
                 if len(filtered_cases) > 10:
@@ -683,14 +683,14 @@ class ExperimentCoordinator:
             if end_pos == -1:
                 return None
 
-            # 提取标记之间的内容
+            # Extract content between markers
             content_start = start_pos + len(start_marker)
             extracted_content = file_content[content_start:end_pos].strip()
 
             if not extracted_content:
                 return None
 
-            # 添加文件标识
+            # Add file marker
             formatted_content = f"--- 来自: {file_name} ---\n{extracted_content}"
             return formatted_content
 
@@ -710,17 +710,17 @@ class ExperimentCoordinator:
             汇总分析结果
         """
         try:
-            # 创建临时文件夹用于分析
+            # Create a temporary directory for analysis
             import tempfile
             import subprocess
             from datetime import datetime
 
-            # 创建临时的 summary_analyzer 来加载知识和提取结果
+            # Create a temporary summary_analyzer to load knowledge and extract results
             from summary_analyzer import SummaryAnalyzer
 
             temp_summary_analyzer = SummaryAnalyzer(self.data_loader)
 
-            # 加载业务知识
+            # Load domain knowledge
             knowledge_content = ""
             if knowledge_path:
                 knowledge_content = temp_summary_analyzer._load_knowledge(
@@ -729,7 +729,7 @@ class ExperimentCoordinator:
                 if knowledge_content:
                     print(f"✅ 成功加载业务知识 ({len(knowledge_content)} 字符)")
 
-            # 构建dolphin命令
+            # Build dolphin command
             cmd_parts = [
                 str(self.data_loader.dolphin_cmd),
                 "--folder",
@@ -744,7 +744,7 @@ class ExperimentCoordinator:
                 "suggestions",
             ]
 
-            # 执行分析命令
+            # Run analysis command
             result = subprocess.run(
                 cmd_parts,
                 capture_output=True,
@@ -754,7 +754,7 @@ class ExperimentCoordinator:
             )
 
             if result.returncode == 0:
-                # 提取分析结果
+                # Extract analysis result
                 extracted = temp_summary_analyzer._extract_summary_result(result.stdout)
                 if extracted:
                     return extracted
@@ -780,7 +780,7 @@ class ExperimentCoordinator:
         max_iterations=5,
         timeout_seconds=500,
     ):
-        """入口：委托 SimulationInjector 执行具体逻辑"""
+        """Entry point: delegate execution to SimulationInjector."""
         injector = SimulationInjector(
             experiment_path=self.experiment_path,
             data_loader=self.data_loader,
@@ -804,7 +804,7 @@ class ExperimentCoordinator:
         max_iterations=5,
         timeout_seconds=500,
     ):
-        """入口：委托 SimulationInjector 执行具体逻辑（批量）"""
+        """Entry point: delegate batch execution to SimulationInjector."""
         injector = SimulationInjector(
             experiment_path=self.experiment_path,
             data_loader=self.data_loader,
@@ -819,4 +819,4 @@ class ExperimentCoordinator:
             timeout_seconds=timeout_seconds,
         )
 
-    # 注：simulation-inject 相关实现已迁移至 SimulationInjector
+    # Note: simulation-inject implementation has been migrated to SimulationInjector

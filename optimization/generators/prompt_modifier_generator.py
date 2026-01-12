@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PromptModifierGenerator - 基于 LLM 生成 prompt 变体
+PromptModifierGenerator - generate prompt variants via an LLM.
 
-核心思想：
-1. 读取原始 .dph 文件内容
-2. 基于 SemanticJudge 的反馈生成改进版本
-3. 针对性地改进 system prompt、tool prompt 或结构
-4. 使用 temp_file 执行模式进行测试
+Core idea:
+1. Read the original .dph file content
+2. Generate improved versions based on SemanticJudge feedback
+3. Improve system prompt, tool prompt, or structure in a targeted way
+4. Test via the temp_file execution mode
 
-安全机制：
-- 作用域限制：默认只修改 system 部分
-- 答案脱敏：禁止在 prompt 中泄露测试答案
-- 格式验证：确保生成的是有效的 .dph 文件
+Safety:
+- Scope limiting: only modify the system section by default
+- Answer redaction: forbid leaking test answers in prompts
+- Format validation: ensure the generated output is a valid .dph file
 """
 from pathlib import Path
 from typing import Any
@@ -20,23 +20,23 @@ import json
 import re
 from dataclasses import dataclass
 
-from experiments.optimization.types import Candidate, ExecutionContext, EvaluationResult
-from experiments.optimization.protocols import Generator
+from optimization.types import Candidate, ExecutionContext, EvaluationResult
+from optimization.protocols import Generator
 
 
 @dataclass
 class PromptModificationConstraint:
-    """Prompt 修改约束"""
+    """Constraints for prompt modification."""
     target_section: str = 'system'  # 'system', 'tools', 'all'
-    max_length_ratio: float = 1.3  # 不超过原长度的 130%
-    preserve_sections: list[str] = None  # 保持不变的部分
-    forbidden_patterns: list[str] = None  # 禁止出现的模式（如答案泄露）
+    max_length_ratio: float = 1.3  # Do not exceed 130% of the original length
+    preserve_sections: list[str] = None  # Sections to preserve unchanged
+    forbidden_patterns: list[str] = None  # Forbidden patterns (e.g., answer leakage)
 
     def __post_init__(self):
         if self.preserve_sections is None:
             self.preserve_sections = []
         if self.forbidden_patterns is None:
-            # 默认禁止直接包含答案的模式
+            # Default forbidden patterns that directly include answers
             self.forbidden_patterns = [
                 r'答案是.*',
                 r'correct answer is.*',
@@ -46,16 +46,16 @@ class PromptModificationConstraint:
 
 class PromptModifierGenerator(Generator):
     """
-    基于 LLM 生成 Prompt 变体
+    Generate prompt variants via an LLM.
 
-    工作流程：
-    1. initialize: 生成初始 prompt 变体
-    2. evolve: 基于评估结果生成改进版本
+    Workflow:
+    1. initialize: generate initial prompt variants
+    2. evolve: generate improved variants based on evaluation results
     """
 
     def __init__(
         self,
-        llm_client: Any,  # LLM 客户端（如 DolphinLanguage）
+        llm_client: Any,  # LLM client (e.g., DolphinLanguage)
         initial_size: int = 3,
         constraints: PromptModificationConstraint = None
     ):
@@ -67,30 +67,30 @@ class PromptModifierGenerator(Generator):
 
     def initialize(self, target: str, context: dict) -> list[Candidate]:
         """
-        生成初始 prompt 变体
+        Generate initial prompt variants.
 
         Args:
-            target: 原始 agent 内容（.dph 文件内容）
-            context: 上下文信息
-                - agent_path: agent 文件路径
-                - failed_cases: 失败的测试用例
-                - knowledge: 业务知识
-                - error_types: 错误类型（来自 SemanticJudge）
+            target: Original agent content (.dph file content).
+            context: Context information:
+                - agent_path: path to the agent file
+                - failed_cases: failed test cases
+                - knowledge: domain knowledge
+                - error_types: error types (from SemanticJudge)
 
         Returns:
-            初始候选列表（使用 temp_file 执行模式）
+            Initial candidates (using temp_file execution mode).
         """
         self._original_content = target
         self._original_length = len(target)
 
-        # 提取需要优化的部分
+        # Extract the section to optimize
         section_to_optimize = self._extract_section(target, self.constraints.target_section)
 
-        # 分析错误类型，生成针对性的改进方向
+        # Analyze error types and generate targeted improvement directions
         error_types = context.get('error_types', [])
         improvement_directions = self._generate_improvement_directions(error_types, context)
 
-        # 生成初始变体
+        # Generate initial variants
         candidates = []
         for i, direction in enumerate(improvement_directions[:self.initial_size]):
             modified_content = self._generate_variant(
@@ -100,9 +100,9 @@ class PromptModifierGenerator(Generator):
                 context=context
             )
 
-            # 验证修改是否合法
+            # Validate modification
             if self._validate_modification(modified_content, context):
-                # 创建临时文件执行上下文
+                # Create a temp-file execution context
                 agent_path = Path(context.get('agent_path', 'agent.dph'))
                 execution_context = ExecutionContext(
                     mode='temp_file',
@@ -131,33 +131,33 @@ class PromptModifierGenerator(Generator):
         context: dict
     ) -> list[Candidate]:
         """
-        基于评估结果演化出新的 prompt 变体
+        Evolve new prompt variants based on evaluation results.
 
-        策略：
-        1. 提取最佳候选的改进模式
-        2. 结合 SemanticJudge 的反馈
-        3. 生成深度改进版本
+        Strategy:
+        1. Extract improvement patterns from the best candidate
+        2. Incorporate SemanticJudge feedback
+        3. Generate refined variants
         """
         if not selected:
             return []
 
-        # 找到最佳候选
+        # Find the best candidate
         best_idx = max(range(len(evaluations)), key=lambda i: evaluations[i].score)
         best_candidate = selected[best_idx]
         best_eval = evaluations[best_idx]
 
-        # 提取改进模式
+        # Extract improvement patterns
         patterns = self._extract_improvement_patterns(best_candidate, best_eval)
 
-        # 如果仍有错误，生成针对性改进
+        # If errors remain, generate targeted improvements
         if best_eval.detail and hasattr(best_eval.detail, 'error_types'):
             remaining_errors = best_eval.detail.error_types
             new_directions = self._generate_improvement_directions(remaining_errors, context)
         else:
-            # 尝试进一步优化
+            # Try further refinement
             new_directions = self._generate_refinement_directions(best_candidate, context)
 
-        # 生成新一代候选
+        # Generate next-generation candidates
         new_candidates = []
         for direction in new_directions[:len(selected)]:
             modified_content = self._generate_variant(
@@ -195,18 +195,18 @@ class PromptModifierGenerator(Generator):
         return new_candidates
 
     def _extract_section(self, content: str, section: str) -> str:
-        """提取指定部分的内容"""
+        """Extract a specific section from .dph content."""
         if section == 'all':
             return content
 
-        # 简化的 .dph 解析（实际应该更严谨）
+        # Simplified .dph parsing (should be more robust in production)
         if section == 'system':
-            # 提取 system prompt
+            # Extract system prompt
             match = re.search(r'system\s*=\s*"""(.*?)"""', content, re.DOTALL)
             if match:
                 return match.group(1)
         elif section == 'tools':
-            # 提取 tools 部分
+            # Extract tools section
             match = re.search(r'tools\s*=\s*\[(.*?)\]', content, re.DOTALL)
             if match:
                 return match.group(1)
@@ -218,10 +218,10 @@ class PromptModifierGenerator(Generator):
         error_types: list[str],
         context: dict
     ) -> list[str]:
-        """根据错误类型生成改进方向"""
+        """Generate improvement directions from error types."""
         directions = []
 
-        # 根据错误类型映射到改进方向
+        # Map error types to improvement directions
         error_to_direction = {
             'logic_error': '加强逻辑推理能力，明确步骤',
             'tool_misuse': '优化工具使用说明和示例',
@@ -234,7 +234,7 @@ class PromptModifierGenerator(Generator):
             if error_type in error_to_direction:
                 directions.append(error_to_direction[error_type])
 
-        # 如果没有特定错误，使用通用改进方向
+        # If no specific errors are provided, use generic improvement directions
         if not directions:
             directions = [
                 '优化角色定义和任务描述',
@@ -249,7 +249,7 @@ class PromptModifierGenerator(Generator):
         candidate: Candidate,
         context: dict
     ) -> list[str]:
-        """生成进一步优化方向"""
+        """Generate further refinement directions."""
         return [
             '进一步精简和明确表达',
             '增强关键步骤的说明',
@@ -265,11 +265,11 @@ class PromptModifierGenerator(Generator):
         parent_patterns: list[str] = None
     ) -> str:
         """
-        使用 LLM 生成 prompt 变体
+        Generate a prompt variant using an LLM.
 
-        这里使用 LLM 根据改进方向生成新版本
+        This uses the LLM to generate a new version based on the improvement direction.
         """
-        # 构建 LLM prompt
+        # Build the LLM prompt
         modification_prompt = f"""你是一个 Agent Prompt 优化专家。
 
 当前任务：根据以下改进方向，优化 Agent 的 prompt。
@@ -294,11 +294,11 @@ class PromptModifierGenerator(Generator):
 请直接输出优化后的内容，不要包含其他说明。
 """
 
-        # 调用 LLM 生成（这里需要实际的 LLM 客户端）
-        # 为了演示，先返回一个简单的模拟版本
+        # Call LLM generation (requires a real LLM client)
+        # For demo purposes, return a mock variant
         modified_section = self._mock_llm_generate(modification_prompt, direction, section)
 
-        # 替换原内容中的对应部分
+        # Replace the corresponding section in the original content
         if self.constraints.target_section == 'system':
             modified_content = re.sub(
                 r'system\s*=\s*""".*?"""',
@@ -313,12 +313,12 @@ class PromptModifierGenerator(Generator):
 
     def _mock_llm_generate(self, prompt: str, direction: str, section: str) -> str:
         """
-        模拟 LLM 生成（实际应该调用真实的 LLM）
+        Mock LLM generation (should call a real LLM in production).
 
-        TODO: 替换为真实的 LLM 调用
+        TODO: Replace with a real LLM call.
         """
-        # 简单的模拟：直接返回原内容（真实的 LLM 会生成改进版本）
-        # 在实际使用时，这里会调用 LLM API 生成真正的优化内容
+        # Simple mock: return the original content as-is
+        # In real usage, this would call an LLM API to generate optimized content
         return section.strip()
 
     def _extract_improvement_patterns(
@@ -326,50 +326,50 @@ class PromptModifierGenerator(Generator):
         candidate: Candidate,
         evaluation: EvaluationResult
     ) -> list[str]:
-        """从最佳候选中提取改进模式"""
+        """Extract improvement patterns from the best candidate."""
         patterns = []
 
-        # 提取有效的改进模式（基于 metadata 和 content）
+        # Extract patterns based on metadata and content
         if candidate.metadata.get('direction'):
             patterns.append(candidate.metadata['direction'])
 
-        # 如果评估结果中有 action_vector，提取关键词
+        # Extract keywords from action_vector if available
         if evaluation.detail and hasattr(evaluation.detail, 'action_vector'):
             action_vector = evaluation.detail.action_vector
             if action_vector:
-                patterns.extend(action_vector[:3])  # 取前3个行动建议
+                patterns.extend(action_vector[:3])  # Take first 3 suggestions
 
         return patterns
 
     def _validate_modification(self, content: str, context: dict) -> bool:
         """
-        验证修改是否合法
+        Validate a modification.
 
-        检查：
-        1. 长度限制
-        2. 禁止模式
-        3. 基本格式
+        Checks:
+        1. Length limits
+        2. Forbidden patterns
+        3. Basic structure
         """
-        # 1. 检查长度
+        # 1. Check length
         if len(content) > self._original_length * self.constraints.max_length_ratio:
             return False
 
-        # 2. 检查禁止模式（防止答案泄露）
+        # 2. Check forbidden patterns (prevent answer leakage)
         expected_answer = context.get('expected', '')
         if expected_answer and expected_answer.lower() in content.lower():
-            # 如果修改后的内容包含答案，拒绝
+            # If the modified content includes the answer, reject it
             return False
 
         for pattern in self.constraints.forbidden_patterns:
             if re.search(pattern, content, re.IGNORECASE):
                 return False
 
-        # 3. 基本格式检查（.dph 文件应该包含必要的结构）
-        # 放宽检查：只要包含 system、def、或者原内容的主要关键字即可
+        # 3. Basic structure check (.dph should contain required structure)
+        # Relaxed: accept if it contains system/def/triple-quoted strings
         has_structure = (
             'system' in content or
             'def ' in content or
-            '"""' in content  # 至少有三引号字符串
+            '"""' in content  # At least a triple-quoted string
         )
 
         if not has_structure:
@@ -383,7 +383,7 @@ def create_default_prompt_modifier(
     target_section: str = 'system',
     initial_size: int = 3
 ) -> PromptModifierGenerator:
-    """创建默认配置的 PromptModifierGenerator"""
+    """Create a PromptModifierGenerator with default settings."""
     constraints = PromptModificationConstraint(
         target_section=target_section,
         max_length_ratio=1.3,

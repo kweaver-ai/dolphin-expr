@@ -1,18 +1,16 @@
 import yaml
 import os
 import ast
+import sqlite3
 from pathlib import Path
-from DolphinLanguageSDK.ontology.datasource.sql import DataSourceSqlite
 
 # Load global config using relative path from current script location
 script_dir = Path(__file__).parent.absolute()
-# script is in: experiments/benchmark/data/bird_dev/
-# we need to go to: experiments/design/bird_baseline/config/
-project_root = (
-    script_dir.parent.parent.parent.parent
-)  # Go up to project root (dolphin-language/)
+# script is in: benchmark/bird_dev/
+# we need to go to: design/bird_baseline/config/
+project_root = script_dir.parent.parent
 global_config_path = (
-    project_root / "experiments" / "design" / "bird_baseline" / "config" / "global.yaml"
+    project_root / "design" / "bird_baseline" / "config" / "global.yaml"
 )
 
 with open(global_config_path, "r") as f:
@@ -26,21 +24,16 @@ if not sqlite_sources:
 
 
 # Load SQLite data source by name
-def load_sqlite_data_source_by_name(db_name):
-    """Load SQLite data source by database name."""
-    for source_config in sqlite_sources:
-        if source_config["name"] == db_name:
-            datasource_name = source_config["name"]
-            datasource_path = source_config["database"]
-            config = {"database": datasource_path}
-            return DataSourceSqlite(datasource_name, config)
+def _get_sqlite_db_path(db_name: str | None) -> str:
+    """Find the corresponding sqlite file path from global.yaml ontology.dataSources by db_id/name."""
+    if db_name:
+        for source_config in sqlite_sources:
+            if source_config.get("name") == db_name:
+                return str(source_config.get("database"))
 
     # Fallback to last source if name not found
     last_source_config = sqlite_sources[-1]
-    datasource_name = last_source_config["name"]
-    datasource_path = last_source_config["database"]
-    config = {"database": datasource_path}
-    return DataSourceSqlite(datasource_name, config)
+    return str(last_source_config.get("database"))
 
 
 def _parse_golden_data(golden):
@@ -84,31 +77,28 @@ def _execute_sql_query(query, db_id):
         List of query result data or None if execution fails
     """
     try:
-        # Load appropriate data source based on db_id
-        if db_id:
-            data_source = load_sqlite_data_source_by_name(db_id)
-        else:
-            # Use the last SQLite data source as fallback
-            last_source_config = sqlite_sources[-1]
-            datasource_name = last_source_config["name"]
-            datasource_path = last_source_config["database"]
-            config = {"database": datasource_path}
-            data_source = DataSourceSqlite(datasource_name, config)
+        db_path = _get_sqlite_db_path(db_id)
+        if not db_path:
+            print("Warning: No sqlite database path resolved from config")
+            return None
 
-        data_source.connect()
+        if not os.path.exists(db_path):
+            print(f"Warning: sqlite database file not found: {db_path}")
+            return None
 
-        # Execute the query
-        query_result = data_source.executeQuery(query)
-        result_data = query_result.get("data", [])
-
-        # Close the connection
-        data_source.close()
+        conn = sqlite3.connect(db_path)
+        try:
+            cur = conn.cursor()
+            cur.execute(query)
+            rows = cur.fetchall()
+        finally:
+            conn.close()
 
         # Convert results to a comparable format
-        if not result_data:
+        if not rows:
             return []
         else:
-            return result_data
+            return rows
 
     except Exception as e:
         print(f"Error executing SQL query: {e}")

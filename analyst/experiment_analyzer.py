@@ -14,11 +14,16 @@ import subprocess
 import sys
 import numpy as np  # Added import for numpy
 
-# 注意：此文件现在主要作为数据加载器使用
-# 新的架构中：
-# - GeneralReporter: 负责总体报告生成
-# - ExecutionAnalyzer: 负责智能体执行分析
-# - ExperimentCoordinator: 负责协调和参数分发
+# Allow importing modules (e.g., project_env) from the repo root (supports running `python analyst/experiment_analyzer.py ...` directly)
+repo_root = Path(__file__).resolve().parent.parent
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+# NOTE: this file is now primarily used as a data loader.
+# In the new architecture:
+# - GeneralReporter: overall report generation
+# - ExecutionAnalyzer: agent execution analysis
+# - ExperimentCoordinator: coordination and parameter dispatch
 
 try:
     from .base_analyzer import BaseAnalyzer
@@ -140,53 +145,56 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
     def __init__(self, experiment_path):
         """
-        初始化实验分析器
+        Initialize the experiment analyzer.
 
         Args:
-            experiment_path: experiments/env下的实验目录路径
+            experiment_path: Experiment directory path under env/.
         """
 
-        # 使用父类初始化，但先创建data_loader对象
+        # Initialize the parent class, but first create a data_loader adapter
         class DataLoaderAdapter:
             def __init__(self, experiment_path):
                 self.experiment_path = Path(experiment_path)
                 self.experiment_name = self.experiment_path.name
-                self.root_dir = Path(__file__).parent.parent.parent
-                self.dolphin_cmd = self.root_dir / "bin" / "dolphin"
+                self.root_dir = Path(__file__).resolve().parent.parent
+                from project_env import ensure_dolphin_importable, find_dolphin_cli
+
+                ensure_dolphin_importable()
+                self.dolphin_cmd = Path(find_dolphin_cli(repo_root=self.root_dir))
                 self.reports_dir = self.experiment_path / "reports"
                 self.reports_dir.mkdir(exist_ok=True, parents=True)
 
-        # 调用父类初始化
+        # Initialize the parent class
         super().__init__(DataLoaderAdapter(experiment_path))
 
-        # ExperimentAnalyzer特有属性
+        # ExperimentAnalyzer-specific attributes
         self.runs = []
 
-        # 注意：此类现在主要用作数据加载器
-        # 分析功能已移至专门的模块中
+        # NOTE: this class is primarily used as a data loader now.
+        # Analysis logic has been moved to dedicated modules.
 
     @classmethod
     def add_variable_encoding_rule(cls, var_type, var_name, encoding_dict):
         """
-        动态添加变量编码规则，提高扩展性
+        Dynamically add a variable encoding rule for extensibility.
 
         Args:
             var_type: 'boolean_vars', 'categorical_vars', or 'numeric_vars'
-            var_name: 变量名
-            encoding_dict: 编码映射字典或数值范围列表
+            var_name: Variable name.
+            encoding_dict: Encoding map dict, or numeric range list.
 
         Examples:
-            # 添加布尔变量
+            # Add a boolean variable
             ExperimentAnalyzer.add_variable_encoding_rule(
                 'boolean_vars', 'new_feature', {'True': 'N', 'False': 'n'}
             )
 
-            # 添加分类变量
+            # Add a categorical variable
             ExperimentAnalyzer.add_variable_encoding_rule(
                 'categorical_vars', 'algorithm', {'dfs': 'D', 'bfs': 'B', 'astar': 'A'}
             )
 
-            # 添加数值变量
+            # Add a numeric variable
             ExperimentAnalyzer.add_variable_encoding_rule(
                 'numeric_vars', 'batch_size', [(16, 'S'), (64, 'M'), (256, 'L'), (float('inf'), 'X')]
             )
@@ -198,12 +206,12 @@ class ExperimentAnalyzer(BaseAnalyzer):
     @classmethod
     def get_encoding_rules_info(cls):
         """
-        获取当前所有编码规则的信息，便于查看和调试
+        Get information for all current encoding rules (for inspection/debugging).
 
         Returns:
-            str: 格式化的编码规则信息
+            str: Formatted encoding rule info.
         """
-        info = "当前变量编码规则:\n"
+        info = "Current variable encoding rules:\n"
         info += "=" * 50 + "\n"
 
         for var_type, vars_dict in cls.VARIABLE_ENCODING_RULES.items():
@@ -226,11 +234,11 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return info
 
     def load_experiment_data(self):
-        """加载实验数据"""
+        """Load experiment data."""
         print(f"正在分析实验: {self.experiment_name}")
         print(f"实验路径: {self.experiment_path}")
 
-        # 查找所有run目录
+        # Find all run directories
         run_dirs = sorted(
             [
                 d
@@ -270,26 +278,26 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
     def parse_variables_string(self, variables_str):
         """
-        解析variables字符串，提取key=value对
+        Parse a variables string into key=value pairs.
 
         Args:
-            variables_str: 形如 "key1=value1; key2=value2" 的字符串
+            variables_str: A string like "key1=value1; key2=value2".
 
         Returns:
-            dict: 解析后的key-value字典
+            dict: Parsed key-value dict.
         """
         variables_dict = {}
         if not variables_str or variables_str == "None":
             return variables_dict
 
-        # 处理不同的分隔符和格式
-        # 支持 "key1=value1; key2=value2" 或 "key1=value1, key2=value2" 格式
+        # Handle different separators and formats
+        # Supports "key1=value1; key2=value2" or "key1=value1, key2=value2"
         pairs = re.split(r"[;,]", variables_str)
 
         for pair in pairs:
             pair = pair.strip()
             if "=" in pair:
-                key, value = pair.split("=", 1)  # 只分割第一个=号
+                key, value = pair.split("=", 1)  # Split on the first '=' only
                 key = key.strip()
                 value = value.strip()
                 variables_dict[key] = value
@@ -298,31 +306,31 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
     def encode_variable_value(self, var_name, var_value):
         """
-        根据编码规则将变量值编码为简短标识符
+        Encode a variable value into a compact identifier.
 
         Args:
-            var_name: 变量名
-            var_value: 变量值
+            var_name: Variable name.
+            var_value: Variable value.
 
         Returns:
-            str: 编码后的标识符，如果无法编码则返回None
+            str: Encoded identifier, or None if it cannot be encoded.
         """
-        # 处理布尔变量
+        # Handle boolean variables
         boolean_vars = self.VARIABLE_ENCODING_RULES.get("boolean_vars", {})
         if var_name in boolean_vars:
             return boolean_vars[var_name].get(str(var_value))
 
-        # 处理分类变量
+        # Handle categorical variables
         categorical_vars = self.VARIABLE_ENCODING_RULES.get("categorical_vars", {})
         if var_name in categorical_vars:
-            # 支持部分匹配（不区分大小写）
+            # Allow partial matches (case-insensitive)
             value_lower = str(var_value).lower()
             for key, code in categorical_vars[var_name].items():
                 if key.lower() in value_lower or value_lower in key.lower():
                     return code
             return categorical_vars[var_name].get(str(var_value))
 
-        # 处理数值变量
+        # Handle numeric variables
         numeric_vars = self.VARIABLE_ENCODING_RULES.get("numeric_vars", {})
         if var_name in numeric_vars:
             try:
@@ -334,19 +342,19 @@ class ExperimentAnalyzer(BaseAnalyzer):
             except (ValueError, TypeError):
                 pass
 
-        # 如果没有匹配的编码规则，返回None
+        # No matching encoding rule
         return None
 
     def detect_varying_variables(self):
         """
-        动态检测当前实验中哪些变量真正发生了变化
+        Detect which variables actually vary in the current experiment.
 
         Returns:
-            dict: {变量名: [所有不同的值]}
+            dict: {variable_name: [all distinct values]}
         """
         all_variables = {}
 
-        # 收集所有run的所有变量
+        # Collect variables across all runs
         for run in self.runs:
             variables = run.get("variables", {})
             for var_name, var_value in variables.items():
@@ -354,7 +362,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                     all_variables[var_name] = set()
                 all_variables[var_name].add(str(var_value))
 
-        # 只保留有变化的变量（值不止一个）
+        # Keep only variables that vary (more than one distinct value)
         varying_variables = {}
         for var_name, values in all_variables.items():
             if len(values) > 1:
@@ -364,10 +372,10 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
     def generate_dynamic_encoding_rules(self, varying_variables):
         """
-        为变化的变量动态生成编码规则
+        Generate encoding rules for varying variables.
 
         Args:
-            varying_variables: {变量名: [不同值列表]}
+            varying_variables: {variable_name: [distinct values]}
 
         Returns:
             dict: 动态生成的编码规则
@@ -375,10 +383,10 @@ class ExperimentAnalyzer(BaseAnalyzer):
         dynamic_rules = {}
 
         for var_name, values in varying_variables.items():
-            # 为每个变量的不同值生成编码
+            # Generate codes for each distinct value of the variable
             var_rules = {}
 
-            # 对于布尔值，使用大小写字母
+            # For booleans, use upper/lower-case letters
             if set(values) == {"True", "False"} or set(values) == {"true", "false"}:
                 var_rules = {"True": var_name[0].upper(), "False": var_name[0].lower()}
                 if "true" in values:
@@ -387,9 +395,9 @@ class ExperimentAnalyzer(BaseAnalyzer):
                         "false": var_name[0].lower(),
                     }
 
-            # 对于其他类型，使用数字或字母序列
+            # For other types, use numeric/letter sequences
             else:
-                # 使用变量名首字母 + 数字，统一处理所有变量
+                # Use first letter of variable name + number
                 base_char = var_name[0].lower()
                 for i, value in enumerate(values):
                     var_rules[value] = f"{base_char}{i+1}"
@@ -400,27 +408,27 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
     def generate_variable_code(self, variables_dict, dynamic_rules=None):
         """
-        为variables字典生成编码字符串，优先使用动态规则
+        Generate an encoded string for a variables dict, preferring dynamic rules.
 
         Args:
-            variables_dict: 变量字典
-            dynamic_rules: 动态生成的编码规则
+            variables_dict: Variables dict.
+            dynamic_rules: Dynamically generated encoding rules.
 
         Returns:
-            str: 编码后的字符串
+            str: Encoded string.
         """
         code_parts = []
 
-        # 按变量名排序，确保一致的输出
+        # Sort by variable name for stable output
         for var_name in sorted(variables_dict.keys()):
             var_value = variables_dict[var_name]
             code = None
 
-            # 优先使用动态规则
+            # Prefer dynamic rules
             if dynamic_rules and var_name in dynamic_rules:
                 code = dynamic_rules[var_name].get(str(var_value))
 
-            # 如果动态规则没有，再尝试静态规则
+            # Fall back to static rules
             if not code:
                 code = self.encode_variable_value(var_name, var_value)
 
@@ -430,26 +438,26 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return "".join(code_parts)
 
     def analyze_configs(self):
-        """分析实验配置 - 包含entrypoint、config和variables的完整配置"""
+        """Analyze experiment configurations including entrypoint, config, and variables."""
         config_table = []
         for run in self.runs:
             config = run["config"]
             entrypoint = run.get("entrypoint", "unknown")
             variables = run.get("variables", {})
 
-            # Debug: 打印读取到的信息
+            # Debug: print extracted info
             if entrypoint == "unknown":
                 print(
                     f"Warning: entrypoint not found for {run['run_id']}, available keys: {list(run.keys())}"
                 )
 
-            # 处理variables，将其转换为可显示的字符串
+            # Convert variables to a displayable string
             variables_str = ""
             if variables:
                 var_parts = []
                 for key, value in variables.items():
                     if isinstance(value, str) and len(value) > 50:
-                        # 长字符串截断显示
+                        # Truncate long strings for display
                         var_parts.append(f"{key}={value[:47]}...")
                     else:
                         var_parts.append(f"{key}={value}")
@@ -475,27 +483,27 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
         df = pd.DataFrame(config_table)
 
-        # 过滤掉值都是 "unknown" 的列
+        # Drop columns whose values are all "unknown"
         columns_to_keep = ["Run ID"]  # 总是保留 Run ID
         for col in df.columns:
             if col == "Run ID":
                 continue
             unique_values = df[col].unique()
-            # 如果列的所有值都是 "unknown"，则不保留该列
+            # Drop the column if all values are "unknown"
             if not (len(unique_values) == 1 and unique_values[0] == "unknown"):
                 columns_to_keep.append(col)
 
         return df[columns_to_keep]
 
     def generate_run_labels(self):
-        """为每个run生成简洁的标识符[abcd]，表示配置的不同部分，动态检测变化的变量"""
+        """Generate a compact run identifier [abcd] for each run and dynamically encode varying variables."""
         config_df = self.analyze_configs()
 
-        # 动态检测变化的variables
+        # Detect varying variables dynamically
         varying_variables = self.detect_varying_variables()
         dynamic_rules = self.generate_dynamic_encoding_rules(varying_variables)
 
-        # 确定变化的因子
+        # Determine varying factors
         varying_factors = []
         for col in config_df.columns:
             if col == "Run ID":
@@ -503,7 +511,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             if config_df[col].nunique() > 1:
                 varying_factors.append(col)
 
-        # 为每个因子的不同值分配简短字母代码
+        # Assign short codes for each distinct value per factor
         factor_codes = {}
         legend = {}  # 保存标识符说明
 
@@ -512,7 +520,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             codes = {}
 
             if factor == "Model Name":
-                # 模型名称使用特定映射，避免与其他因子冲突
+                # Use a specific mapping for model names to avoid conflicts with other factors
                 for i, value in enumerate(unique_values):
                     if "deepseek" in value.lower():
                         codes[value] = "D"
@@ -527,11 +535,11 @@ class ExperimentAnalyzer(BaseAnalyzer):
                         codes[value] = "K"
                         legend["K"] = f"Kimi模型"
                     else:
-                        # 使用后面的字母避免冲突
+                        # Use later letters to avoid conflicts
                         codes[value] = chr(77 + i)  # M, N, O...
                         legend[chr(77 + i)] = f"{value}"
             elif factor == "Default LLM":
-                # LLM 配置使用数字和特殊字符，避免与Model Name冲突
+                # LLM config uses digits/special chars to avoid conflicts with Model Name
                 for i, value in enumerate(unique_values):
                     if "qwen" in value.lower() or "q" in value.lower():
                         codes[value] = "1"
@@ -546,19 +554,19 @@ class ExperimentAnalyzer(BaseAnalyzer):
                         codes[value] = str(4 + i)
                         legend[str(4 + i)] = f"LLM配置: {value}"
             elif factor == "Variables":
-                # Variables字段使用动态编码系统
+                # Variables use the dynamic encoding system
                 for i, value in enumerate(unique_values):
-                    # 解析variables字符串
+                    # Parse variables string
                     variables_dict = self.parse_variables_string(value)
 
-                    # 使用动态规则生成编码
+                    # Generate code using dynamic rules
                     variable_code = self.generate_variable_code(
                         variables_dict, dynamic_rules
                     )
 
                     if variable_code:
                         codes[value] = variable_code
-                        # 更新图例信息 - 只为真正变化的变量添加图例
+                        # Update legend: only add entries for truly varying variables
                         for var_name, var_value in variables_dict.items():
                             if var_name in varying_variables:
                                 if var_name in dynamic_rules:
@@ -566,13 +574,13 @@ class ExperimentAnalyzer(BaseAnalyzer):
                                     if code and code not in legend:
                                         legend[code] = f"{var_name}={var_value}"
                     else:
-                        # 如果无法编码，使用默认字母
+                        # If encoding fails, fall back to default letters
                         codes[value] = chr(65 + i)
                         legend[chr(65 + i)] = (
                             f"Variables={value[:30]}{'...' if len(value) > 30 else ''}"
                         )
             elif factor == "Entrypoint":
-                # Entrypoint使用特殊符号，避免冲突
+                # Entrypoint uses special symbols to avoid conflicts
                 symbols = ["@", "#", "&", "*", "+", "~", "^", "%"]
                 for i, value in enumerate(unique_values):
                     if i < len(symbols):
@@ -582,7 +590,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                         codes[value] = f"E{i}"
                         legend[f"E{i}"] = f"入口点: {value}"
             else:
-                # 其他因子使用后段字母序列，避免冲突
+                # Other factors use later letters to avoid conflicts
                 start_char = 80  # 从P开始，避免与常用编码冲突
                 for i, value in enumerate(unique_values):
                     codes[value] = chr(start_char + i)
@@ -590,7 +598,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
             factor_codes[factor] = codes
 
-        # 为每个run生成标识符
+        # Generate identifier for each run
         run_labels = {}
         for _, row in config_df.iterrows():
             run_id = row["Run ID"]
@@ -604,14 +612,14 @@ class ExperimentAnalyzer(BaseAnalyzer):
             label = "".join(label_parts)
             run_labels[run_id] = f"{run_id}[{label}]"
 
-        # 保存图例信息和动态规则信息
+        # Persist legend and dynamic-rule info
         self.run_label_legend = legend
         self.varying_variables = varying_variables
         self.dynamic_rules = dynamic_rules
         return run_labels
 
     def analyze_config_impact(self, config_df, accuracy_df):
-        """分析配置差异对准确率的影响 - 基于entrypoint、model和variables"""
+        """Analyze the impact of configuration differences on accuracy based on entrypoint, model, and variables."""
         # Merge config and accuracy
         merged = pd.merge(config_df, accuracy_df, on="Run ID")
 
@@ -662,7 +670,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return pd.DataFrame(impact_analyses)
 
     def analyze_accuracy(self):
-        """分析准确率"""
+        """Analyze accuracy."""
         accuracy_table = []
         for run in self.runs:
             benchmarks = run["summary"]["benchmarks"]
@@ -683,12 +691,12 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return pd.DataFrame(accuracy_table)
 
     def _create_token_lookup_dict(self):
-        """创建 token 消耗查找字典"""
+        """Build a token-consumption lookup dict."""
         token_df = self.analyze_token_consumption()
         token_dict = {}
         for _, row in token_df.iterrows():
             run_id = row["Run ID"]
-            # 提取数值（去掉逗号分隔符）
+            # Extract numeric value (strip comma separators)
             try:
                 total_tokens = int(row["Total All Tokens"].replace(",", ""))
                 avg_tokens_per_case = float(row["Avg Total/Case"])
@@ -713,16 +721,16 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return token_dict
 
     def analyze_by_factors(self):
-        """按所有变化因子分组分析，包括单独的variables分析"""
-        # 获取配置数据框以确定哪些因子有变化
+        """Group analysis by all varying factors, including per-variable analysis."""
+        # Get config DataFrame to determine which factors vary
         config_df = self.analyze_configs()
         latency_df = self.analyze_latency()
 
-        # 创建延迟查找字典
+        # Build latency lookup dict
         latency_dict = {}
         for _, row in latency_df.iterrows():
             run_id = row["Run ID"]
-            # 提取数值（去掉单位）
+            # Extract numeric value (strip unit)
             avg_latency_str = row["Avg Latency"].replace("s", "")
             try:
                 avg_latency = float(avg_latency_str)
@@ -730,10 +738,10 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 avg_latency = 0
             latency_dict[run_id] = avg_latency
 
-        # 创建 token 消耗查找字典
+        # Build token-consumption lookup dict
         token_dict = self._create_token_lookup_dict()
 
-        # 确定哪些配置字段有变化（不是所有值都相同）
+        # Determine which config fields vary (not all values are the same)
         varying_factors = []
         for col in config_df.columns:
             if col == "Run ID":
@@ -741,7 +749,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             if config_df[col].nunique() > 1:  # 如果有超过1个不同值，说明这个因子有变化
                 varying_factors.append(col)
 
-        # 按每个变化因子分组分析
+        # Group analysis by each varying factor
         factor_groups = {}
 
         for factor in varying_factors:
@@ -751,7 +759,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 run_id = row["Run ID"]
                 factor_value = row[factor]
 
-                # 找到对应的run数据
+                # Find corresponding run data
                 run_data = next((r for r in self.runs if r["run_id"] == run_id), None)
                 if run_data:
                     benchmarks = run_data["summary"]["benchmarks"]
@@ -782,11 +790,11 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return factor_groups
 
     def analyze_individual_variables(self):
-        """按单个变量分别分析，使用通用变量解析系统"""
+        """Analyze by individual variables using the generic variable parsing system."""
         config_df = self.analyze_configs()
         latency_df = self.analyze_latency()
 
-        # 创建延迟查找字典
+        # Build latency lookup dict
         latency_dict = {}
         for _, row in latency_df.iterrows():
             run_id = row["Run ID"]
@@ -797,16 +805,16 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 avg_latency = 0
             latency_dict[run_id] = avg_latency
 
-        # 创建 token 消耗查找字典
+        # Build token-consumption lookup dict
         token_dict = self._create_token_lookup_dict()
 
-        # 收集所有变量名
+        # Collect all variable names
         all_variable_names = set()
         for run in self.runs:  # Use self.runs instead of config_df
             variables_dict = run.get("variables", {})
             all_variable_names.update(variables_dict.keys())
 
-        # 为每个变量创建分组
+        # Build groups for each variable
         variable_groups = {}
         for var_name in all_variable_names:
             variable_groups[var_name] = defaultdict(list)
@@ -815,7 +823,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             run_id = run["run_id"]
             variables_dict = run.get("variables", {})
 
-            # 找到对应的run数据
+            # Find corresponding run data
             run_data = run  # Already have it
             benchmarks = run_data["summary"]["benchmarks"]
             correct_count = sum(1 for b in benchmarks if b["is_correct"])
@@ -836,7 +844,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 "input_output_ratio": token_stats.get("input_output_ratio", 0),
             }
 
-            # 将run_info添加到每个变量的对应值分组中
+            # Add run_info to the group for this variable value
             for var_name in all_variable_names:
                 var_value = variables_dict.get(var_name, "Unknown")
                 # Handle list values properly
@@ -847,7 +855,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return variable_groups
 
     def analyze_logs(self, run_path):
-        """分析日志文件来检测错误模式和异常"""
+        """Analyze log files to detect error patterns and anomalies."""
         log_dir = Path(run_path) / ".."
         if not log_dir.exists():
             print(f"日志目录不存在: {log_dir}")
@@ -881,15 +889,15 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return {"errors": errors, "warnings": warnings}
 
     def analyze_case_logs(self, run_dir):
-        """分析单个run的所有case日志文件"""
+        """Analyze all case log files for a single run."""
         run_path = Path(run_dir)
 
-        # 优先检查新的console目录
+        # Prefer the new console/ directory
         console_path = run_path / "console"
         if console_path.exists():
             run_path = console_path
         else:
-            # 回退到旧的log目录
+            # Fall back to legacy log/ directory
             run_path = run_path / "log"
 
         log_files = list(run_path.glob("*.log"))
@@ -915,7 +923,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         warning_patterns = [r"WARNING:.*", r"WARN:.*", r"deprecated.*", r"retry.*"]
 
         for log_file in log_files:
-            # 支持新的case_XXX.log格式和旧的experiment_run_XXX.log格式
+        # Support new case_XXX.log format and legacy experiment_run_XXX.log format
             if not (
                 log_file.name.startswith("case_")
                 or log_file.name.startswith("experiment_run_")
@@ -937,7 +945,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                     matches = re.findall(pattern, content, re.IGNORECASE | re.MULTILINE)
                     warnings.extend(matches)
 
-                # 统计错误和警告
+                # Count errors and warnings
                 for error in errors:
                     error_stats[error[:100]] += 1  # 截取前100个字符
 
@@ -966,7 +974,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         }
 
     def analyze_call_chains(self, run_dir):
-        """分析单个run下所有case的调用链"""
+        """Analyze call chains for all cases under a single run."""
         history_dir = Path(run_dir) / "history"
         if not history_dir.exists():
             return {}
@@ -980,7 +988,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 with open(case_file, "r", encoding="utf-8") as f:
                     lines = f.readlines()
 
-                # 解析每行JSON
+                # Parse JSON per line
                 steps = []
                 for line in lines:
                     line = line.strip()
@@ -991,7 +999,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                         except json.JSONDecodeError:
                             continue
 
-                # 分析调用链
+                # Analyze call chain
                 call_chain_stats = self._analyze_single_case_chain(steps, case_name)
                 call_chain_analysis[case_name] = call_chain_stats
 
@@ -1008,7 +1016,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return call_chain_analysis
 
     def _analyze_single_case_chain(self, steps, case_name):
-        """分析单个case的调用链详情"""
+        """Analyze call chain details for a single case."""
         agent_calls = defaultdict(int)
         tool_calls = defaultdict(int)
         stage_stats = defaultdict(int)
@@ -1018,41 +1026,41 @@ class ExperimentAnalyzer(BaseAnalyzer):
         llm_rounds = 0
         skill_rounds = 0
 
-        # 分析每个步骤
+        # Analyze each stage
         for step in steps:
             agent_name = step.get("agent_name", "unknown")
             stage = step.get("stage", "unknown")
             status = step.get("status", "unknown")
             skill_info = step.get("skill_info")
 
-            # 统计agent调用
+            # Count agent invocations
             if agent_name:
                 agent_calls[agent_name] += 1
 
-            # 统计stage类型
+            # Count stage types
             stage_stats[stage] += 1
 
-            # 统计状态
+            # Count statuses
             status_stats[status] += 1
 
-            # 统计LLM轮数
+            # Count LLM rounds
             if stage == "llm":
                 llm_rounds += 1
 
-            # 统计技能/工具调用
+            # Count skill/tool calls
             if stage == "skill" and skill_info:
                 skill_rounds += 1
                 if isinstance(skill_info, dict):
                     tool_name = skill_info.get("name", "unknown_tool")
                     tool_calls[tool_name] += 1
 
-            # 计算执行时间
+            # Compute execution time
             start_time = step.get("start_time", 0)
             end_time = step.get("end_time", 0)
             if start_time and end_time:
                 total_execution_time += end_time - start_time
 
-        # 计算交互轮数（LLM + Skill的组合轮数）
+        # Compute interaction rounds (combined LLM + skill rounds)
         interaction_rounds = max(llm_rounds, skill_rounds)
 
         return {
@@ -1069,24 +1077,24 @@ class ExperimentAnalyzer(BaseAnalyzer):
         }
 
     def analyze_all_call_chains(self):
-        """分析所有run的调用链，生成汇总统计"""
+        """Analyze call chains across all runs and generate summary statistics."""
         all_call_chains = {}
 
-        # 收集所有run的调用链数据
+        # Collect call chain data across all runs
         for run in self.runs:
             run_dir = self.experiment_path / run["run_id"]
             call_chains = self.analyze_call_chains(run_dir)
             all_call_chains[run["run_id"]] = call_chains
 
-        # 生成汇总统计
+        # Generate summary statistics
         return self._generate_call_chain_summary(all_call_chains)
 
     def _generate_call_chain_summary(self, all_call_chains):
-        """生成调用链汇总分析"""
-        # 按run汇总
+        """Generate a call-chain summary analysis."""
+        # Per-run summary
         run_summaries = []
 
-        # 全局统计
+        # Global summary
         global_agent_usage = defaultdict(int)
         global_tool_usage = defaultdict(int)
         global_interaction_stats = []
@@ -1095,7 +1103,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             if not call_chains:
                 continue
 
-            # 计算本run的统计数据
+            # Compute stats for this run
             run_stats = {
                 "run_id": run_id,
                 "total_cases": len(call_chains),
@@ -1110,7 +1118,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 "failed_cases": 0,
             }
 
-            # 统计数据收集
+            # Collect numeric stats
             interaction_rounds = []
             llm_rounds = []
             skill_rounds = []
@@ -1126,24 +1134,24 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
                 run_stats["successful_cases"] += 1
 
-                # 收集数值数据
+                # Collect numeric values
                 interaction_rounds.append(case_stats.get("interaction_rounds", 0))
                 llm_rounds.append(case_stats.get("llm_rounds", 0))
                 skill_rounds.append(case_stats.get("skill_rounds", 0))
                 total_steps.append(case_stats.get("total_steps", 0))
                 execution_times.append(case_stats.get("total_execution_time", 0))
 
-                # 收集agent使用情况
+                # Collect agent usage
                 for agent, count in case_stats.get("agent_calls", {}).items():
                     run_agent_usage[agent] += count
                     global_agent_usage[agent] += count
 
-                # 收集工具使用情况
+                # Collect tool usage
                 for tool, count in case_stats.get("tool_calls", {}).items():
                     run_tool_usage[tool] += count
                     global_tool_usage[tool] += count
 
-            # 计算平均值
+            # Compute averages
             if interaction_rounds:
                 run_stats["avg_interaction_rounds"] = sum(interaction_rounds) / len(
                     interaction_rounds
@@ -1157,10 +1165,10 @@ class ExperimentAnalyzer(BaseAnalyzer):
                     execution_times
                 )
 
-                # 全局统计
+                # Global summary
                 global_interaction_stats.extend(interaction_rounds)
 
-            # 最常用的agents和tools (取前3个)
+            # Most-used agents and tools (top 3)
             run_stats["most_used_agents"] = dict(
                 sorted(run_agent_usage.items(), key=lambda x: x[1], reverse=True)[:3]
             )
@@ -1170,7 +1178,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
             run_summaries.append(run_stats)
 
-        # 全局汇总
+        # Global aggregation
         global_summary = {
             "total_runs": len([r for r in run_summaries if r["successful_cases"] > 0]),
             "total_cases": sum(r["successful_cases"] for r in run_summaries),
@@ -1197,7 +1205,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         }
 
     def _analyze_interaction_distribution(self, interaction_rounds):
-        """分析交互轮数分布"""
+        """Analyze interaction-round distribution."""
         if not interaction_rounds:
             return {}
 
@@ -1223,7 +1231,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         }
 
     def detect_consecutive_errors(self, results_df):
-        """检测连续错误模式"""
+        """Detect consecutive error patterns."""
         consecutive_patterns = {}
 
         for run_id in [col for col in results_df.columns if col.startswith("run_")]:
@@ -1232,7 +1240,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 if result == "✗":
                     errors.append(i + 1)  # 题目编号从1开始
 
-            # 找连续错误段
+            # Find consecutive error spans
             consecutive_errors = []
             if errors:
                 current_streak = [errors[0]]
@@ -1256,7 +1264,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         if not self.runs:
             return pd.DataFrame()
 
-        # 获取所有题目（以第一个run为基准）
+        # Get all cases (use the first run as baseline)
         all_questions = []
         base_benchmarks = self.runs[0]["summary"]["benchmarks"]
 
@@ -1265,7 +1273,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             topic = benchmark["Topic"]
             all_questions.append({"index": i + 1, "topic": topic, "query": query})
 
-        # 创建结果矩阵
+        # Build result matrix
         results_data = []
         for i, question in enumerate(all_questions):
             row = {
@@ -1278,33 +1286,33 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 ),
             }
 
-            # 为每个run添加结果
+            # Add results for each run
             correct_count = 0
             total_runs = 0
             for run in self.runs:
                 benchmarks = run["summary"]["benchmarks"]
                 result = "-"
 
-                # 尝试通过索引匹配题目
+                # Try matching by index
                 if i < len(benchmarks):
                     if benchmarks[i]["Query"] == question["query"]:
                         result = "✓" if benchmarks[i]["is_correct"] else "✗"
                     else:
-                        # 如果索引不匹配，尝试通过内容匹配
+                        # If index mismatches, try matching by content
                         for benchmark in benchmarks:
                             if benchmark["Query"] == question["query"]:
                                 result = "✓" if benchmark["is_correct"] else "✗"
-                                # 未提取到有效answer，则继续扫描后续包含 _progress 的行
+                                # If no valid answer is extracted, continue scanning subsequent lines containing _progress
 
                 row[run["run_id"]] = result
 
-                # 统计正确率
+                # Track overall accuracy
                 if result != "-":
                     total_runs += 1
                     if result == "✓":
                         correct_count += 1
 
-            # 添加整体正确率列
+            # Add overall accuracy column
             if total_runs > 0:
                 accuracy = correct_count / total_runs * 100
                 row["整体正确率"] = f"{accuracy:.1f}%"
@@ -1316,8 +1324,8 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return pd.DataFrame(results_data)
 
     def analyze_model_consistency(self, results_df):
-        """分析相同模型的一致性"""
-        # 按模型分组
+        """Analyze consistency for the same model."""
+        # Group by model
         model_groups = defaultdict(list)
 
         for run in self.runs:
@@ -1332,10 +1340,10 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
         consistency_analysis = []
 
-        # 分析每个模型组内的一致性
+        # Analyze within-group consistency for each model
         for model_name, run_ids in model_groups.items():
             if len(run_ids) > 1:
-                # 对于每对run，计算差异
+                # For each run pair, compute differences
                 for i in range(len(run_ids)):
                     for j in range(i + 1, len(run_ids)):
                         run1, run2 = run_ids[i], run_ids[j]
@@ -1386,7 +1394,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return consistency_analysis
 
     def analyze_latency(self):
-        """分析真实的执行延迟 - 使用文件时间戳计算实际执行时间"""
+        """Analyze real execution latency using file timestamps."""
         latency_table = []
         for run in self.runs:
             run_dir = self.experiment_path / run["run_id"]
@@ -1399,21 +1407,21 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
             for log_file in console_dir.glob("case_*.log"):
                 try:
-                    # 方法1：使用文件时间戳计算真实执行时间（包含LLM调用）
+                    # Method 1: use file timestamps to compute real execution time (including LLM calls)
                     import os
 
                     stat_info = os.stat(log_file)
                     file_birth_time = getattr(
                         stat_info, "st_birthtime", stat_info.st_ctime
-                    )  # 文件创建时间
-                    file_modify_time = stat_info.st_mtime  # 文件修改时间
+                    )  # File creation time
+                    file_modify_time = stat_info.st_mtime  # File modification time
 
-                    # 计算真实执行时间（从创建到修改完成）
+                    # Compute real execution time (from creation to last modification)
                     real_execution_time = file_modify_time - file_birth_time
                     if real_execution_time > 0:
                         file_based_latencies.append(real_execution_time)
 
-                    # 方法2：仍然保留progress分析作为对比（但不作为主要数据）
+                    # Method 2: keep progress-based analysis as a reference (not primary)
                     with open(log_file, "r", encoding="utf-8") as f:
                         content = f.read()
 
@@ -1432,7 +1440,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                                 if p.get("start_time") and p.get("end_time")
                             ]
                             if valid_progress:
-                                # 计算progress步骤的时间（仅作参考）
+                                # Compute progress-step timing (reference only)
                                 step_latencies = [
                                     p["end_time"] - p["start_time"]
                                     for p in valid_progress
@@ -1451,14 +1459,14 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 except Exception as e:
                     print(f"Error analyzing {log_file}: {e}")
 
-            # 优先使用文件时间戳数据（更准确）
+            # Prefer file timestamp data (more accurate)
             if file_based_latencies:
                 avg_latency = sum(file_based_latencies) / len(file_based_latencies)
                 max_latency = max(file_based_latencies)
                 min_latency = min(file_based_latencies)
                 total_latency = sum(file_based_latencies)
 
-                # 计算P50和P99延迟
+                # Compute P50 and P99 latency
                 import numpy as np
 
                 sorted_latencies = sorted(file_based_latencies)
@@ -1488,7 +1496,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 min_latency = min(latencies)
                 total_latency = sum(latencies)
 
-                # 计算P50和P99延迟
+                # Compute P50 and P99 latency
                 import numpy as np
 
                 sorted_latencies = sorted(latencies)
@@ -1513,7 +1521,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                     }
                 )
 
-        # 如果没有数据，创建一个默认的空表
+        # If no data exists, return an empty table
         if not latency_table:
             print("Warning: No latency data found in any run")
             return pd.DataFrame(
@@ -1533,7 +1541,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return pd.DataFrame(latency_table)
 
     def analyze_token_consumption(self):
-        """分析 token 消耗情况 - 从日志中提取 LLM token 使用统计"""
+        """Analyze token consumption by extracting LLM token usage stats from logs."""
         token_table = []
         for run in self.runs:
             run_dir = self.experiment_path / run["run_id"]
@@ -1563,7 +1571,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                         llm_calls = 0
 
                         for stage in progress:
-                            # 只统计 LLM 阶段的 token 消耗
+                            # Only count token usage in the LLM stage
                             if stage.get("stage") == "llm":
                                 llm_calls += 1
                                 input_tokens = stage.get("estimated_input_tokens", 0)
@@ -1586,7 +1594,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 except Exception as e:
                     print(f"Error analyzing tokens for {log_file}: {e}")
 
-            # 计算本 run 的总体 token 统计
+            # Compute overall token stats for this run
             if case_token_stats:
                 total_input = sum(case["input_tokens"] for case in case_token_stats)
                 total_output = sum(case["output_tokens"] for case in case_token_stats)
@@ -1623,7 +1631,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                     }
                 )
 
-        # 如果没有数据，创建一个默认的空表
+        # If there is no data, return an empty table with default columns.
         if not token_table:
             print("Warning: No token consumption data found in any run")
             return pd.DataFrame(
@@ -1645,7 +1653,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return pd.DataFrame(token_table)
 
     def call_analyst_agent(self, data, query):
-        """调用总体分析agent（已迁移到GeneralReporter）"""
+        """Call the general analysis agent (migrated to GeneralReporter)."""
         print("Warning: call_analyst_agent方法已迁移到GeneralReporter类")
         return None
 
@@ -1659,43 +1667,43 @@ class ExperimentAnalyzer(BaseAnalyzer):
         call_chain_summary=None,
     ):
         """
-        使用分析师agent生成深度分析
+        Generate deep analysis using the analyst agent.
 
         Args:
-            config_df: 配置对比数据
-            accuracy_df: 准确率数据
-            latency_df: 延迟数据
-            token_df: Token 消耗数据
-            factor_groups: 因子分组数据
-            call_chain_summary: 调用链分析摘要
+            config_df: Configuration comparison data.
+            accuracy_df: Accuracy data.
+            latency_df: Latency data.
+            token_df: Token consumption data.
+            factor_groups: Factor-grouped statistics.
+            call_chain_summary: Call-chain analysis summary.
 
         Returns:
-            深度分析结果字符串
+            Deep analysis result text.
         """
-        # 准备数据摘要
+        # Prepare data summary
         data_summary = "实验配置和结果摘要：\n"
 
-        # 配置信息
+        # Configuration info
         data_summary += "\n配置对比：\n"
         for _, row in config_df.iterrows():
             data_summary += f"- {row['Run ID']}: entrypoint={row['Entrypoint']}, model={row['Model Name']}, variables={row['Variables'][:50]}...\n"
 
-        # 准确率信息
+        # Accuracy info
         data_summary += "\n准确率结果：\n"
         for _, row in accuracy_df.iterrows():
             data_summary += f"- {row['Run ID']}: {row['Accuracy']} ({row['Correct']}/{row['Total Questions']})\n"
 
-        # 延迟信息
+        # Latency info
         data_summary += "\n执行延迟：\n"
         for _, row in latency_df.iterrows():
             data_summary += f"- {row['Run ID']}: 平均{row['Avg Latency']}, 最大{row['Max Latency']}, 最小{row['Min Latency']}\n"
 
-        # Token 消耗信息
+        # Token usage info
         data_summary += "\nToken消耗：\n"
         for _, row in token_df.iterrows():
             data_summary += f"- {row['Run ID']}: 总计{row['Total All Tokens']} tokens, 平均{row['Avg Total/Case']}/case, LLM调用{row['Avg LLM Calls/Case']}/case\n"
 
-        # 因子分组信息
+        # Factor-grouped info
         data_summary += "\n按因子分组：\n"
         for factor_name, factor_values in factor_groups.items():
             data_summary += f"- {factor_name}:\n"
@@ -1704,7 +1712,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 avg_acc = sum(accuracies) / len(accuracies)
                 data_summary += f"  {value_name}: 平均准确率{avg_acc:.2%}, 共{len(runs_data)}次运行\n"
 
-        # 调用链分析信息
+        # Call-chain analysis
         if call_chain_summary:
             data_summary += "\n调用链分析：\n"
             global_summary = call_chain_summary.get("global_summary", {})
@@ -1713,27 +1721,27 @@ class ExperimentAnalyzer(BaseAnalyzer):
             data_summary += f"- 总案例数: {global_summary.get('total_cases', 0)}\n"
             data_summary += f"- 平均交互轮数: {global_summary.get('avg_interaction_rounds_global', 0):.1f}\n"
 
-            # 最常用工具
+            # Most-used tools
             most_used_tools = global_summary.get("most_used_tools_global", {})
             if most_used_tools:
                 data_summary += f"- 最常用工具: {', '.join(f'{tool}({count}次)' for tool, count in list(most_used_tools.items())[:3])}\n"
 
-            # 交互轮数分布
+            # Interaction-round distribution
             interaction_dist = global_summary.get("interaction_distribution", {})
             if interaction_dist:
                 data_summary += f"- 交互轮数分布: 1轮{interaction_dist.get('cases_with_1_round', 0)}个, 2-4轮{interaction_dist.get('cases_with_2_4_rounds', 0)}个, 5+轮{interaction_dist.get('cases_with_5_plus_rounds', 0)}个\n"
 
-            # 按run的调用链摘要
+            # Per-run call-chain summary
             run_summaries = call_chain_summary.get("run_summaries", [])
             for run_summary in run_summaries[:3]:  # 只显示前3个
                 data_summary += f"  {run_summary['run_id']}: 平均{run_summary['avg_interaction_rounds']:.1f}轮, 成功{run_summary['successful_cases']}个案例\n"
 
-        # 准备实验数据结构供GeneralAnalyzer使用
+        # Prepare experiment data structure for the general analyzer
         experiments = []
         for _, config_row in config_df.iterrows():
             run_id = config_row["Run ID"]
 
-            # 查找对应的准确率、延迟、token数据
+            # Find corresponding accuracy, latency, and token stats
             acc_row = (
                 accuracy_df[accuracy_df["Run ID"] == run_id].iloc[0]
                 if not accuracy_df[accuracy_df["Run ID"] == run_id].empty
@@ -1778,7 +1786,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             }
             experiments.append(exp_data)
 
-        # 计算汇总统计
+        # Compute summary statistics
         accuracies = [e["Accuracy"] for e in experiments]
         latencies = [e["Latency P50"] for e in experiments]
         tokens = [e["Total Tokens"] for e in experiments]
@@ -1799,16 +1807,16 @@ class ExperimentAnalyzer(BaseAnalyzer):
             "interactions_mean": np.mean(interactions) if interactions else 0,
         }
 
-        # 已迁移到GeneralReporter
+        # Migrated to GeneralReporter
         print("Warning: generate_deep_analysis方法已迁移到GeneralReporter类")
         return "深度分析功能已迁移到新的架构中。"
 
     def generate_report(self):
-        """生成分析报告"""
+        """Generate analysis report."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         report_name = f"{self.experiment_name}_analysis_{timestamp}"
 
-        # 分析数据
+        # Analyze data
         config_df = self.analyze_configs()
         accuracy_df = self.analyze_accuracy()
         factor_groups = self.analyze_by_factors()
@@ -1821,7 +1829,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
         impact_df = self.analyze_config_impact(config_df, accuracy_df)
         call_chain_summary = self.analyze_all_call_chains()
 
-        # 生成深度分析
+        # Generate deep analysis
         print("正在调用分析师agent进行深度分析...")
         deep_analysis = self.generate_deep_analysis(
             config_df,
@@ -1832,13 +1840,13 @@ class ExperimentAnalyzer(BaseAnalyzer):
             call_chain_summary,
         )
 
-        # 日志分析
+        # Log analysis
         log_analyses = {}
         for run in self.runs:
             run_dir = self.experiment_path / run["run_id"]
             log_analyses[run["run_id"]] = self.analyze_case_logs(run_dir)
 
-        # 生成文本报告
+        # Generate text report
         report_path = self.reports_dir / f"{report_name}.txt"
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(f"实验分析报告\n")
@@ -1847,13 +1855,13 @@ class ExperimentAnalyzer(BaseAnalyzer):
             f.write(f"分析时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"实验路径: {self.experiment_path}\n\n")
 
-            # 1. 实验配置对比
+            # 1. Experiment configuration comparison
             f.write("1. 实验配置对比\n")
             f.write("-" * 30 + "\n")
             f.write(config_df.to_string(index=False))
             f.write("\n\n")
 
-            # 1.0 Run标识符说明
+            # 1.0 Run identifier notes
             f.write("1.0 Run标识符说明\n")
             f.write("-" * 30 + "\n")
             f.write("Run ID后的[xxxx]标识符含义：\n")
@@ -1861,7 +1869,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 for code, meaning in sorted(self.run_label_legend.items()):
                     f.write(f"  {code} = {meaning}\n")
 
-            # 显示动态检测到的变化变量
+            # Show dynamically detected variable changes
             if hasattr(self, "varying_variables") and self.varying_variables:
                 f.write(f"\n本次实验检测到的变化变量：\n")
                 for var_name, values in self.varying_variables.items():
@@ -1879,15 +1887,15 @@ class ExperimentAnalyzer(BaseAnalyzer):
                         f.write(f"    编码规则: {encoding_info}\n")
             f.write("\n")
 
-            # 1.1 配置因子对准确率的影响分析
+            # 1.1 Impact of configuration factors on accuracy
             f.write("1.1 配置因子对准确率的影响分析\n")
             f.write(impact_df.to_string(index=False))
             f.write("\n")
 
-            # 2. 准确率对比
+            # 2. Accuracy comparison
             f.write("2. 准确率对比\n")
             f.write("-" * 30 + "\n")
-            # 创建带标识符的准确率表格
+            # Create an accuracy table with identifiers
             accuracy_df_labeled = accuracy_df.copy()
             accuracy_df_labeled["Run ID"] = accuracy_df_labeled["Run ID"].apply(
                 lambda x: run_labels.get(x, x)
@@ -1895,11 +1903,11 @@ class ExperimentAnalyzer(BaseAnalyzer):
             f.write(accuracy_df_labeled.to_string(index=False))
             f.write("\n\n")
 
-            # 3. 按配置因子分组的准确率对比
+            # 3. Accuracy comparison grouped by configuration factors
             f.write("3. 按配置因子分组的准确率对比\n")
             f.write("-" * 30 + "\n")
 
-            # 先显示模型因子的分组对比
+            # Show grouped comparison for the model factor first
             for factor_name, factor_groups_data in factor_groups.items():
                 if factor_name not in ["Variables"]:  # 先处理非Variables的因子
                     f.write(f"\n按 {factor_name} 分组:\n")
@@ -1925,7 +1933,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                             avg_tokens = sum(tokens_per_case) / len(tokens_per_case)
                             avg_llm_calls_val = sum(llm_calls) / len(llm_calls)
 
-                            # 计算标准差和方差
+                            # Compute standard deviation and variance
                             import numpy as np
 
                             std_acc = np.std(accuracies) if len(accuracies) > 1 else 0
@@ -1955,7 +1963,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                             f.write(f"    平均LLM调用/case: {avg_llm_calls_val:.1f}\n")
                     f.write("\n")
 
-            # 单独处理Variables - 按单个变量分别分析
+            # Handle Variables separately - analyze by each variable
             f.write("按单个变量分组分析:\n")
             for var_name, var_groups_data in individual_variables.items():
                 f.write(f"\n按 {var_name} 分组:\n")
@@ -1982,7 +1990,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                             avg_tokens = sum(tokens_per_case) / len(tokens_per_case)
                             avg_llm_calls_val = sum(llm_calls) / len(llm_calls)
 
-                            # 计算标准差和方差
+                            # Compute standard deviation and variance
                             import numpy as np
 
                             std_acc = np.std(accuracies) if len(accuracies) > 1 else 0
@@ -2013,10 +2021,10 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 f.write("\n")
             f.write("\n")
 
-            # 4. 连续错误模式分析
+            # 4. Consecutive error pattern analysis
             f.write("4. 连续错误模式分析\n")
             f.write("-" * 30 + "\n\n")
-            # 计算最长的run_label长度用于对齐
+            # Compute the maximum run_label length for alignment
             max_label_len = max(
                 len(run_labels.get(run_id, run_id))
                 for run_id in consecutive_patterns.keys()
@@ -2032,10 +2040,10 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 else:
                     f.write(f"{run_label:{max_label_len}}: 无明显连续错误模式\n")
 
-            # 5. 延迟分析
+            # 5. Latency analysis
             f.write("\n5. 延迟分析\n")
             f.write("-" * 30 + "\n")
-            # 创建带标识符的延迟表格
+            # Create a latency table with identifiers
             latency_df_labeled = latency_df.copy()
             latency_df_labeled["Run ID"] = latency_df_labeled["Run ID"].apply(
                 lambda x: run_labels.get(x, x)
@@ -2043,10 +2051,10 @@ class ExperimentAnalyzer(BaseAnalyzer):
             f.write(latency_df_labeled.to_string(index=False))
             f.write("\n")
 
-            # 5.1 Token 消耗分析
+            # 5.1 Token usage analysis
             f.write("\n5.1 Token 消耗分析\n")
             f.write("-" * 30 + "\n")
-            # 创建带标识符的token表格
+            # Create a token table with identifiers
             token_df_labeled = token_df.copy()
             token_df_labeled["Run ID"] = token_df_labeled["Run ID"].apply(
                 lambda x: run_labels.get(x, x)
@@ -2054,7 +2062,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             f.write(token_df_labeled.to_string(index=False))
             f.write("\n")
 
-            # 6. 调用链和工具使用分析
+            # 6. Call-chain and tool usage analysis
             f.write("\n6. 调用链和工具使用分析\n")
             f.write("-" * 30 + "\n")
             if call_chain_summary:
@@ -2068,14 +2076,14 @@ class ExperimentAnalyzer(BaseAnalyzer):
                     f"  平均交互轮数: {global_summary.get('avg_interaction_rounds_global', 0):.2f}\n"
                 )
 
-                # 工具使用统计
+                # Tool usage statistics
                 most_used_tools = global_summary.get("most_used_tools_global", {})
                 if most_used_tools:
                     f.write(f"\n  最常用工具排名:\n")
                     for i, (tool, count) in enumerate(most_used_tools.items(), 1):
                         f.write(f"    {i}. {tool}: {count}次调用\n")
 
-                # 交互轮数分布
+                # Interaction-round distribution
                 interaction_dist = global_summary.get("interaction_distribution", {})
                 if interaction_dist:
                     f.write(f"\n  交互轮数分布:\n")
@@ -2111,7 +2119,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                     )
                     f.write(f"    平均总步数: {run_summary['avg_total_steps']:.1f}\n")
 
-                    # 最常用工具
+                    # Most used tools
                     most_used_tools_run = run_summary.get("most_used_tools", {})
                     if most_used_tools_run:
                         f.write(
@@ -2120,7 +2128,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             else:
                 f.write("调用链分析数据不可用\n")
 
-            # 7. 日志错误分析
+            # 7. Log error analysis
             f.write("\n7. 日志错误分析\n")
             f.write("-" * 30 + "\n")
             for run_id, log_analysis in log_analyses.items():
@@ -2154,11 +2162,11 @@ class ExperimentAnalyzer(BaseAnalyzer):
                             f"  异常小的日志文件 (<100 bytes): {len(small_files)}个\n"
                         )
 
-            # 8. 实验健康状态评估
+            # 8. Experiment health evaluation
             f.write("\n8. 实验健康状态评估\n")
             f.write("-" * 30 + "\n")
 
-            # 识别异常run
+            # Identify anomalous runs
             anomalous_runs = []
             for run_id, log_analysis in log_analyses.items():
                 error_count = sum(log_analysis["error_stats"].values())
@@ -2185,7 +2193,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                         f"  {run_label}: {anomaly['status']} - {anomaly['error_count']}个错误, {anomaly['consecutive_errors']}个连续错误\n"
                     )
 
-                    # 添加具体的异常分析建议
+                    # Add specific anomaly analysis suggestions
                     if anomaly["error_count"] > 100:
                         f.write(
                             f"    建议: 检查{run_label}的系统日志，可能存在JSON解析、网络连接或API调用问题\n"
@@ -2197,15 +2205,15 @@ class ExperimentAnalyzer(BaseAnalyzer):
             else:
                 f.write("所有运行状态正常\n")
 
-            # 9. 方差分析汇总
+            # 9. Variance analysis summary
             f.write("\n9. 方差分析汇总\n")
             f.write("-" * 30 + "\n")
             f.write("各对比组的准确率方差统计:\n\n")
 
-            # 汇总所有对比组的方差数据
+            # Summarize variance data across all comparison groups
             variance_summary = []
 
-            # 处理配置因子分组
+            # Process configuration-factor groupings
             for factor_name, factor_groups_data in factor_groups.items():
                 if factor_name not in ["Variables"]:  # 先处理非Variables的因子
                     for factor_value, runs_data in factor_groups_data.items():
@@ -2227,7 +2235,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                                 }
                             )
 
-            # 处理单个变量分组
+            # Process single-variable groupings
             for var_name, var_groups_data in individual_variables.items():
                 for var_value, runs_data in var_groups_data.items():
                     if var_value != "Unknown" and len(runs_data) > 1:
@@ -2248,20 +2256,20 @@ class ExperimentAnalyzer(BaseAnalyzer):
                             }
                         )
 
-            # 按对比组分组，然后按方差排序输出
+            # Group by comparison set, then output sorted by variance
             from collections import defaultdict
 
             grouped_by_factor = defaultdict(list)
             for item in variance_summary:
                 grouped_by_factor[item["factor"]].append(item)
 
-            # 对每组内部按方差排序
+            # Sort by variance within each group
             for factor in grouped_by_factor:
                 grouped_by_factor[factor].sort(
                     key=lambda x: x["variance"], reverse=True
                 )
 
-            # 按组的最大方差排序整体组
+            # Sort groups by each group's maximum variance
             sorted_factors = sorted(
                 grouped_by_factor.keys(),
                 key=lambda f: max(item["variance"] for item in grouped_by_factor[f]),
@@ -2287,14 +2295,14 @@ class ExperimentAnalyzer(BaseAnalyzer):
                     f.write(
                         f"{factor_display:<30} {value_display:<40} {item['count']:<8} {item['avg_accuracy']:<12.2%} {item['variance']:<12.6f} {item['std_dev']:<8.2%}\n"
                     )
-                # 在每组之间加分隔线
+                # Add a separator line between groups
                 if factor != sorted_factors[-1]:
                     f.write("-" * 120 + "\n")
 
             if not variance_summary:
                 f.write("没有找到包含多个样本的对比组。\n")
 
-            # 找出方差最大和最小的组
+            # Find the groups with the largest and smallest variance
             if len(variance_summary) > 1:
                 max_var_group = variance_summary[0]
                 min_var_group = variance_summary[-1]
@@ -2328,29 +2336,28 @@ class ExperimentAnalyzer(BaseAnalyzer):
         return report_path
 
     def debug_case(self, experiment_name, run_name, case_num):
-        """智能体执行分析（已迁移到ExecutionAnalyzer）"""
+        """Agent execution analysis (migrated to ExecutionAnalyzer)."""
         print("Warning: debug_case方法已迁移到ExecutionAnalyzer类")
         return None
 
     # ==========================================
-    # 以下方法已迁移到专门的模块中：
-    # - GeneralAnalyzer: 负责总体分析功能
-    # - AnalysisDebugger: 负责调试分析功能
+    # The following methods have been migrated to dedicated modules:
+    # - GeneralAnalyzer: overall analysis
+    # - AnalysisDebugger: debug analysis
     #
-    # 这些方法保留用于向后兼容，建议使用新的模块化接口
+    # They are kept for backward compatibility; prefer the newer modular interfaces.
     # ==========================================
 
     def _preprocess_experiment_log(self, experiment_name, run_name, case_num):
-        """预处理实验日志，提取Final result:之前的内容并保存到临时文件 [已迁移到AnalysisDebugger]"""
+        """Preprocess experiment logs and save content before 'Final result:' to a temp file (migrated to AnalysisDebugger)."""
         import tempfile
         import re
 
-        # 使用新的日志文件路径格式
+        # Use the new log file path format
         # console/case_XXX.log
         case_num_padded = f"{int(case_num):03d}"
         log_file = (
             self.root_dir
-            / "experiments"
             / "env"
             / experiment_name
             / run_name
@@ -2358,15 +2365,14 @@ class ExperimentAnalyzer(BaseAnalyzer):
             / f"case_{case_num_padded}.log"
         )
 
-        # 如果新路径不存在，尝试旧路径格式
+        # If the new path doesn't exist, try the legacy format
         if not log_file.exists():
-            # 提取run编号，去掉前导零
+            # Extract run number and strip leading zeros
             run_num = run_name.split("_")[-1].lstrip("0") or "0"
-            # 去掉case编号的前导零
+            # Strip leading zeros from case number
             case_num_clean = case_num.lstrip("0") or "0"
             log_file = (
                 self.root_dir
-                / "experiments"
                 / "env"
                 / experiment_name
                 / run_name
@@ -2379,11 +2385,11 @@ class ExperimentAnalyzer(BaseAnalyzer):
             return None
 
         try:
-            # 读取原始日志（完整内容）
+            # Read raw log content (full content)
             with open(log_file, "r", encoding="utf-8") as f:
                 full_content = f.read()
 
-            # 截取到Final result:之前的主要轨迹内容，避免变量dump干扰
+            # Keep main trajectory content before "Final result:" to avoid variable-dump interference
             content = full_content
             final_result_pos = content.find("Final result:")
             if final_result_pos != -1:
@@ -2391,33 +2397,33 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
             content = content.strip()
 
-            # 从完整日志中尝试提取关键信息，作为META附加到末尾，便于debug分析
+            # Extract key signals from the full log and append as META for easier debugging
             meta_lines = []
             meta_lines.append("\n\n==== META (extracted) ====")
 
-            # 1) 提取最终答案文本（如存在）
+            # 1) Extract predicted answer text (if present)
             try:
-                # 匹配 Final result: {... 'answer': '...'}
+                # Match Final result: {... 'answer': '...'}
                 ans_match = re.search(
                     r"Final result:\s*\{.*?'answer':\s*'(.*?)',\s*'think'",
                     full_content,
                     re.DOTALL,
                 )
                 if ans_match:
-                    # 清洗转义和ANSI
+                    # Clean escapes
                     raw_answer = ans_match.group(1)
                     clean_answer = raw_answer.replace("\\n", "\n")
                     meta_lines.append("[predicted_answer]\n" + clean_answer.strip())
             except Exception:
                 pass
 
-            # 2) 提取最近一次 executeSQL 的 SQL 文本（如存在）
+            # 2) Extract the last executeSQL SQL text (if present)
             try:
-                # 去除ANSI颜色，避免匹配失败
+                # Strip ANSI color codes to avoid match failures
                 ansi_escape = re.compile(r"\x1B(?:[@-Z\\\\-_]|\[[0-?]*[ -/]*[@-~])")
                 no_ansi = ansi_escape.sub("", full_content)
 
-                # 匹配最后一个\"sql\": "..."
+                # Match the last "sql": "..."
                 sql_matches = list(
                     re.finditer(r'"sql"\s*:\s*"(.*?)"', no_ansi, re.DOTALL)
                 )
@@ -2428,7 +2434,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             except Exception:
                 pass
 
-            # 3) 提取Custom arguments（如存在）
+            # 3) Extract Custom arguments (if present)
             try:
                 cust_match = re.search(
                     r"Custom arguments:\s*(\{.*?\})", full_content, re.DOTALL
@@ -2440,11 +2446,11 @@ class ExperimentAnalyzer(BaseAnalyzer):
             except Exception:
                 pass
 
-            # 4) 若没有任何meta，移除占位
+            # 4) If there is no META, do not append the placeholder
             if meta_lines and len(meta_lines) > 1:
                 content = content + "\n" + "\n".join(meta_lines)
 
-            # 创建临时文件
+            # Create a temporary file
             temp_file = tempfile.NamedTemporaryFile(
                 mode="w", encoding="utf-8", suffix=".log", delete=False
             )
@@ -2458,13 +2464,12 @@ class ExperimentAnalyzer(BaseAnalyzer):
             return None
 
     def _get_experiment_log(self, experiment_name, run_name, case_num):
-        """获取实验日志内容，截止到Final result:之前"""
-        # 使用新的日志文件路径格式
+        """Get experiment log content up to 'Final result:'."""
+        # Use the new log file path format
         # console/case_XXX.log
         case_num_padded = f"{int(case_num):03d}"
         log_file = (
             self.root_dir
-            / "experiments"
             / "env"
             / experiment_name
             / run_name
@@ -2472,15 +2477,14 @@ class ExperimentAnalyzer(BaseAnalyzer):
             / f"case_{case_num_padded}.log"
         )
 
-        # 如果新路径不存在，尝试旧路径格式
+        # If the new path does not exist, fall back to the legacy path format
         if not log_file.exists():
-            # 提取run编号，去掉前导零
+            # Extract run number and strip leading zeros
             run_num = run_name.split("_")[-1].lstrip("0") or "0"
-            # 去掉case编号的前导零
+            # Strip leading zeros from the case number
             case_num_clean = case_num.lstrip("0") or "0"
             log_file = (
                 self.root_dir
-                / "experiments"
                 / "env"
                 / experiment_name
                 / run_name
@@ -2496,7 +2500,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             with open(log_file, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            # 截取到Final result:之前的内容
+            # Truncate content before "Final result:"
             final_result_pos = content.find("Final result:")
             if final_result_pos != -1:
                 content = content[:final_result_pos]
@@ -2509,7 +2513,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
     # _get_benchmark_data method moved to BaseAnalyzer
 
     def _run_debug_analysis(self, exp_log_path, benchmark):
-        """调用analysis.dph进行分析"""
+        """Call analysis.dph to run analysis."""
         debug_log_file = None
         try:
             debug_file = Path(__file__).parent / "dolphins" / "analysis.dph"
@@ -2517,7 +2521,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 print(f"错误: analysis.dph文件不存在: {debug_file}")
                 return None
 
-            # 构建dolphin命令
+            # Build dolphin command
             cmd_parts = [
                 str(self.dolphin_cmd),
                 "--folder",
@@ -2532,7 +2536,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 "debug_result",
             ]
 
-            # 创建临时日志文件
+            # Create a temporary log file
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             reports_dir = Path(__file__).parent.parent / "reports"
             reports_dir.mkdir(exist_ok=True)
@@ -2540,7 +2544,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
             print("🔧 执行调试分析...")
 
-            # 使用与run_experiment相同的方式调用
+            # Invoke using the same approach as run_experiment
             with open(debug_log_file, "w", encoding="utf-8") as log_f:
                 try:
                     result = subprocess.run(
@@ -2565,15 +2569,15 @@ class ExperimentAnalyzer(BaseAnalyzer):
                 print(f"错误: 调试分析执行失败，退出码: {exit_code}")
                 return None
 
-            # 读取日志文件并提取variables
+            # Read log file and extract variables
             try:
                 with open(debug_log_file, "r", encoding="utf-8") as f:
                     log_content = f.read()
 
-                # 提取debug_result
+            # Extract debug_result
                 extracted = self._extract_debug_result(log_content)
                 if extracted:
-                    # 成功提取结果，清理临时文件
+                    # Successfully extracted: clean up temporary file
                     try:
                         debug_log_file.unlink(missing_ok=True)
                     except:
@@ -2591,7 +2595,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             print(f"错误: 执行调试分析失败: {e}")
             return None
         finally:
-            # 确保临时日志文件被清理
+            # Ensure the temporary log file is cleaned up
             if debug_log_file and debug_log_file.exists():
                 try:
                     debug_log_file.unlink(missing_ok=True)
@@ -2599,9 +2603,9 @@ class ExperimentAnalyzer(BaseAnalyzer):
                     pass
 
     def _extract_debug_result(self, log_content: str):
-        """直接从DOLPHIN_VARIABLES_OUTPUT标记中提取debug_result变量。
+        """Extract debug_result directly from DOLPHIN_VARIABLES_OUTPUT markers.
 
-        使用与experiments/bin/run中parse_variables_from_log相同的逻辑。
+        Uses the same logic as parse_variables_from_log in bin/run.
         """
         if not log_content:
             return None
@@ -2611,7 +2615,7 @@ class ExperimentAnalyzer(BaseAnalyzer):
             start_marker = "=== DOLPHIN_VARIABLES_OUTPUT_START ==="
             end_marker = "=== DOLPHIN_VARIABLES_OUTPUT_END ==="
 
-            # 使用基类的通用方法提取变量输出部分
+            # Use base helper to extract the variables output section
             variables_section = self._extract_result_from_log(
                 log_content, start_marker, end_marker
             )
@@ -2633,34 +2637,34 @@ class ExperimentAnalyzer(BaseAnalyzer):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="实验结果分析工具")
+    parser = argparse.ArgumentParser(description="Experiment result analysis tool")
     parser.add_argument(
-        "experiment_path", help="实验目录路径 (experiments/env下的目录)"
+        "experiment_path", help="Experiment directory path (under env/)"
     )
-    parser.add_argument("--output-dir", help="输出目录 (默认: experiments/reports)")
+    parser.add_argument("--output-dir", help="Output directory (default: <experiment_path>/reports)")
 
-    # 添加 --general 和 --analysis 选项
+    # Add --general and --analysis options
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
-        "--general", action="store_true", help="执行总体分析模式（使用general.dph）"
+        "--general", action="store_true", help="Run general analysis mode (uses general.dph)"
     )
     mode_group.add_argument(
-        "--analysis", action="store_true", help="执行调试分析模式（使用analysis.dph）"
+        "--analysis", action="store_true", help="Run debug analysis mode (uses analysis.dph)"
     )
 
-    # 用于调试分析的参数
-    parser.add_argument("--run", help="指定run名称（用于--analysis模式）")
-    parser.add_argument("--case", help="指定case编号（用于--analysis模式）")
+    # Debug analysis arguments
+    parser.add_argument("--run", help="Run name (for --analysis mode)")
+    parser.add_argument("--case", help="Case number (for --analysis mode)")
 
     args = parser.parse_args()
 
-    # 构建完整路径
+    # Build full path
     if not os.path.isabs(args.experiment_path):
-        # 相对路径，基于当前脚本位置构建
+        # Relative path based on current script location
         script_dir = Path(__file__).parent.parent
-        # 如果参数已经包含了experiments/env前缀，直接使用
-        if args.experiment_path.startswith("experiments/env/"):
-            experiment_name = args.experiment_path.split("experiments/env/")[-1]
+        # If the argument already contains env/ prefix, use it directly
+        if args.experiment_path.startswith("env/"):
+            experiment_name = args.experiment_path.split("env/")[-1]
             experiment_path = script_dir / "env" / experiment_name
         else:
             experiment_path = script_dir / "env" / args.experiment_path
@@ -2671,14 +2675,14 @@ def main():
         print(f"错误: 实验路径不存在: {experiment_path}")
         return 1
 
-    # 创建分析器
+    # Create analyzer
     analyzer = ExperimentAnalyzer(experiment_path)
 
-    # 根据模式选择不同的执行逻辑
+    # Dispatch based on selected mode
     if args.analysis or (not args.general and (args.run or args.case)):
-        # 调试分析模式（默认为兼容性）
+        # Debug analysis mode (default for compatibility)
         if not args.run or not args.case:
-            print("错误: --analysis模式需要指定 --run 和 --case 参数")
+            print("Error: --analysis requires both --run and --case.")
             return 1
 
         experiment_name = experiment_path.name
@@ -2694,7 +2698,7 @@ def main():
             print("错误: 调试分析失败")
             return 1
     else:
-        # 总体分析模式（默认）
+        # General analysis mode (default)
         if not analyzer.load_experiment_data():
             print("错误: 无法加载实验数据")
             return 1

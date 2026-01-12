@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-总体报告生成器
+General report generator
 
-负责生成实验的总体分析报告，包括：
-- 配置对比分析
-- 准确率统计
-- 延迟性能分析
-- Token消耗分析
-- 调用链分析
-- 深度分析（使用general.dph）
+Generates an overall analysis report for an experiment, including:
+- Configuration comparison
+- Accuracy statistics
+- Latency performance analysis
+- Token consumption analysis
+- Call chain analysis
+- Deep analysis (via general.dph)
 """
 
 import os
@@ -34,26 +34,26 @@ except ImportError:
 
 
 class GeneralReporter(BaseAnalyzer):
-    """总体报告生成器"""
+    """General report generator."""
 
     def __init__(self, data_loader):
         """
-        初始化报告生成器
+        Initialize the report generator.
 
         Args:
-            data_loader: ExperimentDataLoader实例，用于加载实验数据
+            data_loader: An ExperimentDataLoader instance for loading experiment data.
         """
-        # 调用父类初始化
+        # Initialize the parent class
         super().__init__(data_loader)
 
     def generate_report(self):
-        """生成总体分析报告"""
+        """Generate an overall analysis report."""
         print("🔍 开始生成总体分析报告...")
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         report_name = f"{self.experiment_name}_general_report_{timestamp}"
 
-        # 分析数据
+        # Analyze experiment data
         config_df = self.data_loader.analyze_configs()
         accuracy_df = self.data_loader.analyze_accuracy()
         factor_groups = self.data_loader.analyze_by_factors()
@@ -66,7 +66,7 @@ class GeneralReporter(BaseAnalyzer):
         impact_df = self.data_loader.analyze_config_impact(config_df, accuracy_df)
         call_chain_summary = self.data_loader.analyze_all_call_chains()
 
-        # 生成深度分析
+        # Generate deep analysis
         print("📊 正在调用LLM进行深度分析...")
         deep_analysis = self._generate_deep_analysis(
             config_df,
@@ -77,13 +77,13 @@ class GeneralReporter(BaseAnalyzer):
             call_chain_summary,
         )
 
-        # 日志分析
+        # Log analysis
         log_analyses = {}
         for run in self.data_loader.runs:
             run_dir = self.experiment_path / run["run_id"]
             log_analyses[run["run_id"]] = self.data_loader.analyze_case_logs(run_dir)
 
-        # 生成文本报告
+        # Write text report
         report_path = self._write_report(
             report_name,
             config_df,
@@ -101,7 +101,7 @@ class GeneralReporter(BaseAnalyzer):
             individual_variables,
         )
 
-        # 生成CSV详细数据
+        # Write detailed CSV data
         csv_path = self.reports_dir / f"{report_name}.csv"
         results_df.to_csv(csv_path, index=False, encoding="utf-8")
 
@@ -120,13 +120,13 @@ class GeneralReporter(BaseAnalyzer):
         factor_groups,
         call_chain_summary,
     ):
-        """生成深度分析内容"""
-        # 准备实验数据结构
+        """Generate deep analysis content."""
+        # Prepare experiment data structure
         experiments = []
         for _, config_row in config_df.iterrows():
             run_id = config_row["Run ID"]
 
-            # 查找对应的准确率、延迟、token数据
+            # Find corresponding accuracy, latency, and token stats
             acc_row = (
                 accuracy_df[accuracy_df["Run ID"] == run_id].iloc[0]
                 if not accuracy_df[accuracy_df["Run ID"] == run_id].empty
@@ -179,7 +179,7 @@ class GeneralReporter(BaseAnalyzer):
                             )
                             break
 
-        # 计算汇总统计 - 确保所有值都是数值类型
+        # Compute summary statistics and ensure all values are numeric
         def to_numeric(val):
             """Convert value to numeric, handling strings and None"""
             if val is None:
@@ -218,20 +218,20 @@ class GeneralReporter(BaseAnalyzer):
         return self._call_general_agent(experiments, summary)
 
     def _call_general_agent(self, experiments, summary):
-        """调用general.dph进行深度分析"""
+        """Call general.dph to run deep analysis."""
         try:
-            # 准备分析数据
+            # Prepare analysis payload
             data_summary = {
                 "total_experiments": len(experiments),
                 "summary_metrics": summary,
                 "experiments": experiments,
             }
 
-            # 构建dolphin命令
+            # Build dolphin command
             cmd_parts = [
                 str(self.dolphin_cmd),
                 "--folder",
-                str(self.root_dir / "experiments" / "analyst" / "dolphins"),
+                str(Path(__file__).resolve().parent / "dolphins"),
                 "--agent",
                 "general",
                 "--data",
@@ -242,7 +242,7 @@ class GeneralReporter(BaseAnalyzer):
                 "analysis_result",
             ]
 
-            # 运行命令
+            # Run command
             result = subprocess.run(
                 cmd_parts,
                 capture_output=True,
@@ -252,10 +252,10 @@ class GeneralReporter(BaseAnalyzer):
             )
 
             if result.returncode == 0:
-                # 解析输出
+                # Parse output
                 output = result.stdout
 
-                # 方法1: 查找DOLPHIN_VARIABLES_OUTPUT标记
+                # Method 1: Look for DOLPHIN_VARIABLES_OUTPUT markers
                 start_marker = DOLPHIN_VARIABLES_OUTPUT_START
                 end_marker = DOLPHIN_VARIABLES_OUTPUT_END
 
@@ -278,7 +278,7 @@ class GeneralReporter(BaseAnalyzer):
                     except json.JSONDecodeError:
                         pass
 
-                # 方法2: 查找"Agent general:"开始的地方
+                # Method 2: Look for where "Agent general:" starts
                 output_lines = output.split("\n")
                 start_idx = -1
                 for i, line in enumerate(output_lines):
@@ -316,7 +316,7 @@ class GeneralReporter(BaseAnalyzer):
         log_analyses,
         individual_variables,
     ):
-        """写入报告文件"""
+        """Write the report to disk."""
         report_path = self.reports_dir / f"{report_name}.txt"
 
         with open(report_path, "w", encoding="utf-8") as f:
@@ -326,18 +326,18 @@ class GeneralReporter(BaseAnalyzer):
             f.write(f"分析时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"实验路径: {self.experiment_path}\n\n")
 
-            # 1. 实验配置对比
+            # 1. Experiment configuration comparison
             f.write("1. 实验配置对比\n")
             f.write("-" * 30 + "\n")
             f.write(config_df.to_string(index=False))
             f.write("\n\n")
 
-            # 1.0 Run标识符说明
+            # 1.0 Run identifier legend
             f.write("1.0 Run标识符说明\n")
             f.write("-" * 30 + "\n")
             f.write("Run ID后的[xxxx]标识符含义：\n")
 
-            # 使用数据加载器的图例信息
+            # Prefer legend information from the data loader
             if (
                 hasattr(self.data_loader, "run_label_legend")
                 and self.data_loader.run_label_legend
@@ -345,7 +345,7 @@ class GeneralReporter(BaseAnalyzer):
                 for code, meaning in sorted(self.data_loader.run_label_legend.items()):
                     f.write(f"  {code} = {meaning}\n")
             else:
-                # 如果没有图例信息，从实际数据中推断
+                # If no legend is provided, infer from observed data
                 unique_codes = set()
                 for run_id, label in run_labels.items():
                     if "[" in label and "]" in label:
@@ -354,12 +354,12 @@ class GeneralReporter(BaseAnalyzer):
                             if char.isupper():
                                 unique_codes.add(char)
 
-                # 根据配置信息推断标识符含义
+                # Infer identifier meaning from configuration
                 config_df = self.data_loader.analyze_configs()
                 if "Model Name" in config_df.columns:
                     model_names = config_df["Model Name"].unique()
                     for code in sorted(unique_codes):
-                        # 根据实际使用的模型来映射标识符
+                        # Map identifiers based on the actual models used
                         found_meaning = False
                         for model in model_names:
                             if "deepseek" in model.lower() and code == "D":
@@ -385,12 +385,12 @@ class GeneralReporter(BaseAnalyzer):
                             f.write(f"  {code} = 未知配置项\n")
             f.write("\n")
 
-            # 1.1 配置因子对准确率的影响分析
+            # 1.1 Impact of configuration factors on accuracy
             f.write("1.1 配置因子对准确率的影响分析\n")
             f.write(impact_df.to_string(index=False))
             f.write("\n")
 
-            # 2. 准确率对比
+            # 2. Accuracy comparison
             f.write("2. 准确率对比\n")
             f.write("-" * 30 + "\n")
             accuracy_df_labeled = accuracy_df.copy()
@@ -400,11 +400,11 @@ class GeneralReporter(BaseAnalyzer):
             f.write(accuracy_df_labeled.to_string(index=False))
             f.write("\n\n")
 
-            # 3. 按配置因子分组的准确率对比
+            # 3. Accuracy comparison grouped by factors
             f.write("3. 按配置因子分组的准确率对比\n")
             f.write("-" * 30 + "\n")
 
-            # 输出factor_groups的内容
+            # Write factor_groups content
             for factor_name, groups in factor_groups.items():
                 f.write(f"\n按 {factor_name} 分组:\n\n")
                 for group_value, group_info in groups.items():
@@ -438,7 +438,7 @@ class GeneralReporter(BaseAnalyzer):
                         avg_tok = sum(tokens_per_case) / len(tokens_per_case)
                         avg_llm = sum(llm_calls) / len(llm_calls)
 
-                        # 计算标准差和方差
+                        # Compute standard deviation and variance
                         import numpy as np
 
                         std_acc = np.std(accuracies) if len(accuracies) > 1 else 0
@@ -465,7 +465,7 @@ class GeneralReporter(BaseAnalyzer):
                     f.write("\n")
                 f.write("\n")
 
-            # 按单个变量分组分析
+            # Analysis grouped by individual variables
             if individual_variables:
                 f.write("按单个变量分组分析:\n")
                 for var_name, var_groups in individual_variables.items():
@@ -490,7 +490,7 @@ class GeneralReporter(BaseAnalyzer):
                                 f.write(f" tokens{int(tokens_per_case)}/case")
                             f.write("\n")
 
-                        # 输出统计信息
+                        # Write aggregated statistics
                         if len(stats) > 1:
                             accuracies = [r["accuracy"] for r in stats]
                             latencies = [r["avg_latency"] for r in stats]
@@ -504,7 +504,7 @@ class GeneralReporter(BaseAnalyzer):
                             avg_tok = sum(tokens_per_case) / len(tokens_per_case)
                             avg_llm = sum(llm_calls) / len(llm_calls)
 
-                            # 计算标准差和方差
+                            # Compute standard deviation and variance
                             import numpy as np
 
                             std_acc = np.std(accuracies) if len(accuracies) > 1 else 0
@@ -535,7 +535,7 @@ class GeneralReporter(BaseAnalyzer):
                     f.write("\n")
             f.write("\n")
 
-            # 4. 连续错误模式分析
+            # 4. Consecutive error pattern analysis
             if consecutive_patterns:
                 f.write("4. 连续错误模式分析\n")
                 f.write("-" * 30 + "\n")
@@ -553,7 +553,7 @@ class GeneralReporter(BaseAnalyzer):
                             )
                 f.write("\n")
 
-            # 5. 延迟性能分析
+            # 5. Latency performance analysis
             f.write("5. 延迟性能分析\n")
             f.write("-" * 30 + "\n")
             latency_df_labeled = latency_df.copy()
@@ -563,7 +563,7 @@ class GeneralReporter(BaseAnalyzer):
             f.write(latency_df_labeled.to_string(index=False))
             f.write("\n\n")
 
-            # 6. Token消耗分析
+            # 6. Token consumption analysis
             f.write("6. Token消耗分析\n")
             f.write("-" * 30 + "\n")
             token_df_labeled = token_df.copy()
@@ -573,9 +573,9 @@ class GeneralReporter(BaseAnalyzer):
             f.write(token_df_labeled.to_string(index=False))
             f.write("\n\n")
 
-            # 配置因子影响分析已移动到1.1节
+            # Note: configuration factor impact analysis is covered in section 1.1
 
-            # 7. 调用链和工具使用分析
+            # 7. Call-chain and tool-usage analysis
             if call_chain_summary:
                 f.write("7. 调用链和工具使用分析\n")
                 f.write("-" * 30 + "\n")
@@ -587,7 +587,7 @@ class GeneralReporter(BaseAnalyzer):
                     f"  - 平均交互轮数: {global_summary.get('avg_interaction_rounds_global', 0):.1f}\n"
                 )
 
-                # 输出每个run的详细调用链统计
+                # Write per-run detailed call chain stats
                 run_summaries = call_chain_summary.get("run_summaries", [])
                 if run_summaries:
                     f.write("\n各Run调用链统计:\n")
@@ -608,7 +608,7 @@ class GeneralReporter(BaseAnalyzer):
                             f"    - 最小交互轮数: {run_summary.get('min_interaction_rounds', 0)}\n"
                         )
 
-                        # 工具使用统计
+                        # Tool usage stats
                         tool_stats = run_summary.get("tool_usage_stats", {})
                         if tool_stats:
                             f.write(f"    - 工具使用统计:\n")
@@ -616,7 +616,7 @@ class GeneralReporter(BaseAnalyzer):
                                 f.write(f"      * {tool_name}: {count}次\n")
                 f.write("\n")
 
-            # 8. 日志错误分析
+            # 8. Log error analysis
             if log_analyses:
                 f.write("8. 日志错误分析\n")
                 f.write("-" * 30 + "\n")
@@ -638,7 +638,7 @@ class GeneralReporter(BaseAnalyzer):
                                     f.write(
                                         f"    - {error_type}: {len(error_list)}个\n"
                                     )
-                                    # 显示前3个错误示例
+                                    # Show the first 3 error examples
                                     for i, error in enumerate(error_list[:3]):
                                         case_id = error.get("case", "unknown")
                                         msg = error.get("message", "")[:100]
@@ -655,11 +655,11 @@ class GeneralReporter(BaseAnalyzer):
                                     )
                 f.write("\n")
 
-            # 9. 方差分析汇总
+            # 9. Variance summary
             f.write("9. 方差分析汇总\n")
             f.write("-" * 30 + "\n")
 
-            # 计算各指标的方差
+            # Compute variance for key metrics
             if len(accuracy_df) > 1:
                 accuracies = [
                     float(acc.rstrip("%")) / 100 for acc in accuracy_df["Accuracy"]
@@ -688,7 +688,7 @@ class GeneralReporter(BaseAnalyzer):
                 f.write("样本数不足，无法计算方差\n")
             f.write("\n")
 
-            # 10. LLM深度分析
+            # 10. LLM deep analysis
             f.write("10. LLM深度分析\n")
             f.write("-" * 30 + "\n")
             if deep_analysis:

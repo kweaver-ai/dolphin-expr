@@ -1,32 +1,32 @@
-#!/usr/bin/env python3.10
+#!/usr/bin/env python3
 """
 Run script for Dolphin Language experiments.
 
 Usage:
-    ./experiments/bin/run --name experiment_name                    # Run full experiment
-    ./experiments/bin/run --name experiment_name --status          # Check experiment status
-    ./experiments/bin/run --name experiment_name --list-envs       # List all experiment executions
-    ./experiments/bin/run --name experiment_name --resume-from N   # Resume from run N
-    ./experiments/bin/run --name experiment_name --env-id ID       # Use specific experiment execution
+    ./bin/run --name experiment_name                    # Run full experiment
+    ./bin/run --name experiment_name --status          # Check experiment status
+    ./bin/run --name experiment_name --list-envs       # List all experiment executions
+    ./bin/run --name experiment_name --resume-from N   # Resume from run N
+    ./bin/run --name experiment_name --env-id ID       # Use specific experiment execution
 
 Examples:
     # Start a new experiment
-    ./experiments/bin/run --name bird_baseline
+    ./bin/run --name bird_baseline
 
     # List all experiment executions
-    ./experiments/bin/run --name bird_baseline --list-envs
+    ./bin/run --name bird_baseline --list-envs
 
     # Check status of the most recent experiment execution
-    ./experiments/bin/run --name bird_baseline --status
+    ./bin/run --name bird_baseline --status
 
     # Check status of a specific experiment execution
-    ./experiments/bin/run --name bird_baseline --env-id bird_baseline_20250828_052443 --status
+    ./bin/run --name bird_baseline --env-id bird_baseline_20250828_052443 --status
 
     # Resume from run 5 in the most recent experiment execution
-    ./experiments/bin/run --name bird_baseline --resume-from 5
+    ./bin/run --name bird_baseline --resume-from 5
 
     # Resume from run 3 in a specific experiment execution
-    ./experiments/bin/run --name bird_baseline --env-id bird_baseline_20250828_052443 --resume-from 3
+    ./bin/run --name bird_baseline --env-id bird_baseline_20250828_052443 --resume-from 3
 
 The script automatically detects the most recent experiment environment when not specified.
 """
@@ -42,9 +42,15 @@ import itertools
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+import re
 
-# Add dolphin src to path
-sys.path.insert(0, str(Path.home() / "dev/github/dolphin/src"))
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from project_env import ensure_dolphin_importable, find_dolphin_cli
+
+ensure_dolphin_importable()
 
 from dolphin.core.logging.logger import get_logger
 from dolphin.core.common.constants import (
@@ -213,11 +219,11 @@ def load_benchmark(benchmark_name, root_dir, num_run_cases=None):
     Returns:
         Tuple of (benchmark_data, benchmark_config)
     """
-    benchmark_dir = root_dir / "experiments" / "benchmark" / "data" / benchmark_name
+    benchmark_dir = root_dir / "benchmark" / benchmark_name
 
     if not benchmark_dir.exists():
         print(
-            f"Error: Benchmark '{benchmark_name}' not found in experiments/benchmark/data/",
+            f"Error: Benchmark '{benchmark_name}' not found in benchmark/",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -914,6 +920,27 @@ def apply_config_to_global_yaml(config_path, config):
         yaml.dump(global_config, f)
 
 
+def render_env_vars_in_file(path: Path) -> None:
+    """
+    将文件内容中的 $VAR / ${VAR} 用当前进程环境变量替换。
+
+    说明：YAML 本身不会做环境变量展开；如果底层配置加载器不支持插值，
+    则需要在运行前显式渲染（例如本函数）。
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return
+
+    rendered = os.path.expanduser(os.path.expandvars(raw))
+    if rendered != raw:
+        path.write_text(rendered, encoding="utf-8")
+
+    unresolved = sorted(set(re.findall(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}", rendered)))
+    if unresolved:
+        print(f"Warning: {path} 仍包含未展开的环境变量占位符: {', '.join(unresolved)}")
+
+
 def run_single_benchmark_case(
     root_dir,
     run_env_dir,
@@ -1031,14 +1058,14 @@ def run_single_benchmark_case(
                     f"DEBUG: DOLPHIN_VARIABLES_OUTPUT_START found: {DOLPHIN_VARIABLES_OUTPUT_START in log_content}"
                 )
 
-                # 如果 Dolphin 命令本身就因为 CLI 参数错误等原因失败，先给出更友好的提示
+                # If the dolphin command fails due to CLI argument errors, print a more user-friendly hint first
                 if exit_code != 0 and "error: ambiguous option:" in log_content:
                     print(
                         "ERROR: Dolphin CLI 报错：存在歧义参数（例如使用了 --mode），"
                         "很可能是 spec.txt 里的 variables 使用了与 Dolphin CLI 选项冲突的名字。"
                     )
                     print(
-                        "       请检查本次运行生成的命令（experiments/env/.../cmds/case_XXX.sh）中 "
+                        "       请检查本次运行生成的命令（env/.../cmds/case_XXX.sh）中 "
                         "以 -- 开头的参数名，避免使用与 --model-name/--model_name 等选项前缀相同的变量名。"
                     )
 
@@ -1218,7 +1245,7 @@ def run_single_experiment(
     cmds_dir.mkdir(exist_ok=True)
 
     # Initialize common components
-    dolphin_cmd = root_dir / "bin" / "dolphin"
+    dolphin_cmd = Path(find_dolphin_cli(repo_root=root_dir))
     dolphins_path = run_env_dir / "dolphins"
     entrypoint_path = dolphins_path / entrypoint
     log_files = []
@@ -1668,12 +1695,12 @@ def show_experiment_status(base_env_dir, experiment_name):
         last_run_num = run_dirs[-1][0] if run_dirs else 0
         print(f"\nTo resume this experiment execution, use:")
         print(
-            f"  python experiments/bin/run --name {experiment_name} --env-id {base_env_dir.name} --resume-from {last_run_num + 1}"
+            f"  ./bin/run --name {experiment_name} --env-id {base_env_dir.name} --resume-from {last_run_num + 1}"
         )
 
         # Also show how to start a new experiment execution
         print(f"\nTo start a new experiment execution, use:")
-        print(f"  python experiments/bin/run --name {experiment_name}")
+        print(f"  ./bin/run --name {experiment_name}")
 
 
 def main():
@@ -1709,20 +1736,20 @@ def main():
 
     # Get root directory
     script_path = Path(__file__).resolve()
-    root_dir = script_path.parent.parent.parent
+    root_dir = script_path.parent.parent
 
     # Validate experiment exists (use design directory instead of playground)
     experiment_name = args.name
-    design_dir = root_dir / "experiments" / "design" / experiment_name
+    design_dir = root_dir / "design" / experiment_name
     if not design_dir.exists():
         print(
-            f"Error: Experiment '{experiment_name}' does not exist in experiments/design/",
+            f"Error: Experiment '{experiment_name}' does not exist in design/",
             file=sys.stderr,
         )
         sys.exit(1)
 
     # Find the most recent experiment environment directory
-    env_dir = root_dir / "experiments" / "env"
+    env_dir = root_dir / "env"
     if not env_dir.exists():
         if args.status:
             print(f"No experiment environments found for '{experiment_name}'")
@@ -1788,7 +1815,7 @@ def main():
     if not args.resume_from and not args.only_gen_report:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         base_env_dir_name = f"{experiment_name}_{timestamp}"
-        base_env_dir = root_dir / "experiments" / "env" / base_env_dir_name
+        base_env_dir = env_dir / base_env_dir_name
         base_env_dir.mkdir(parents=True, exist_ok=True)
     else:
         # When resuming, base_env_dir should already be set to the existing experiment directory
@@ -1983,6 +2010,7 @@ def main():
         # Apply configuration to global.yaml in this run's directory
         config_path = run_env_dir / "config" / "global.yaml"
         apply_config_to_global_yaml(config_path, config)
+        render_env_vars_in_file(config_path)
 
         # Run the experiment
         exit_code, log_files, returned_benchmark_data, all_extracted_variables = (
@@ -2065,9 +2093,7 @@ def main():
                     if "benchmark" in spec_content:
                         benchmark_dir = str(
                             root_dir
-                            / "experiments"
                             / "benchmark"
-                            / "data"
                             / spec_content["benchmark"]
                         )
 

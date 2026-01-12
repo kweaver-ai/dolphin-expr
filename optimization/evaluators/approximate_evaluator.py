@@ -1,48 +1,49 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ApproximateEvaluator - 快速近似评估器
+ApproximateEvaluator - Fast approximate evaluator
 
-核心思想：
-在完整的 SemanticJudge 评估之前，使用更快速的方法进行初步筛选。
-这样可以显著降低评估成本，只对有潜力的候选进行精确评估。
+Core idea:
+Before running the full SemanticJudge evaluation, use faster heuristics for an initial
+screening. This can significantly reduce evaluation cost and only run accurate
+evaluation for promising candidates.
 
-快速评估策略：
-1. 基于规则的快速判断（格式、长度等）
-2. 简化的语义匹配（关键词、相似度）
-3. 历史经验匹配（知识库）
-4. 轻量级 LLM 调用（如果可用）
+Fast evaluation strategies:
+1. Rule-based checks (format, length, etc.)
+2. Simplified semantic matching (keywords, similarity)
+3. Matching from prior experience (knowledge base)
+4. Lightweight LLM calls (if available)
 """
 from typing import Any
 from dataclasses import dataclass
 import re
 from difflib import SequenceMatcher
 
-from experiments.optimization.types import Candidate, EvaluationResult, SemanticJudgeDetail
-from experiments.optimization.protocols import EvaluatorBase
+from optimization.types import Candidate, EvaluationResult, SemanticJudgeDetail
+from optimization.protocols import EvaluatorBase
 
 
 @dataclass
 class ApproximateConfig:
-    """近似评估配置"""
-    # 快速评估的权重
-    format_weight: float = 0.3      # 格式匹配权重
-    keyword_weight: float = 0.3     # 关键词匹配权重
-    similarity_weight: float = 0.4   # 相似度权重
+    """Configuration for approximate evaluation."""
+    # Weights used by the fast evaluation stage
+    format_weight: float = 0.3      # Format matching weight
+    keyword_weight: float = 0.3     # Keyword matching weight
+    similarity_weight: float = 0.4   # Similarity weight
 
-    # 阈值
-    min_confidence: float = 0.3      # 最低置信度（低于此值直接淘汰）
-    max_candidates: int = 10         # 最多保留的候选数
+    # Thresholds
+    min_confidence: float = 0.3      # Minimum confidence (below this will be dropped)
+    max_candidates: int = 10         # Maximum number of candidates to keep
 
-    # 关键词提取
+    # Keyword extraction
     extract_keywords: bool = True
 
 
 class ApproximateEvaluator(EvaluatorBase):
     """
-    快速近似评估器
+    Fast approximate evaluator.
 
-    用于 TwoPhaseEvaluator 的第一阶段，快速筛选候选。
+    Used as the first stage of TwoPhaseEvaluator to quickly filter candidates.
     """
 
     def __init__(self, config: ApproximateConfig = None):
@@ -52,41 +53,41 @@ class ApproximateEvaluator(EvaluatorBase):
 
     def evaluate(self, candidate: Candidate, context: dict) -> EvaluationResult:
         """
-        快速评估单个候选
+        Quickly evaluate a single candidate.
 
-        评估维度：
-        1. 格式匹配度
-        2. 关键词覆盖度
-        3. 与预期的相似度
+        Dimensions:
+        1. Format match
+        2. Keyword coverage
+        3. Similarity to expected output
         """
-        # 提取上下文信息
+        # Extract context
         expected = context.get('expected', '')
         question = context.get('question', '')
         knowledge = context.get('knowledge', '')
 
-        # 首次评估时，提取关键词和格式
+        # On the first evaluation, extract keywords and format patterns
         if self.config.extract_keywords and not self._expected_keywords:
             self._extract_expected_info(expected, question, knowledge)
 
-        # 快速评估
+        # Fast evaluation
         format_score = self._evaluate_format(candidate.content)
         keyword_score = self._evaluate_keywords(candidate.content)
         similarity_score = self._evaluate_similarity(candidate.content, expected)
 
-        # 加权计算总分
+        # Compute weighted total score
         total_score = (
             format_score * self.config.format_weight +
             keyword_score * self.config.keyword_weight +
             similarity_score * self.config.similarity_weight
         )
 
-        # 如果分数太低，直接标记为低置信度
+        # Mark as low-confidence when the score is too low
         if total_score < self.config.min_confidence:
             is_promising = False
         else:
             is_promising = True
 
-        # 构建评估结果
+        # Build evaluation result
         details = SemanticJudgeDetail(
             error_types=['approximate_low_confidence'] if not is_promising else [],
             action_vector=[
@@ -95,14 +96,14 @@ class ApproximateEvaluator(EvaluatorBase):
                 f'similarity_score: {similarity_score:.2f}'
             ],
             candidate_injects=[],
-            rationale=f'快速评估 - 置信度: {"高" if is_promising else "低"}',
+            rationale=f'Fast evaluation - confidence: {"high" if is_promising else "low"}',
             phase='approx'
         )
 
         return EvaluationResult(
             score=total_score,
             detail={'is_promising': is_promising, 'semantic_detail': details},
-            cost_tokens=10,  # 近似评估成本很低
+            cost_tokens=10,  # Approx evaluation is cheap
             metadata={
                 'evaluator': 'approximate',
                 'is_promising': is_promising,
@@ -113,37 +114,37 @@ class ApproximateEvaluator(EvaluatorBase):
         )
 
     def _extract_expected_info(self, expected: str, question: str, knowledge: str):
-        """提取预期答案和问题中的关键信息"""
-        # 提取关键词
+        """Extract key signals from expected output and question."""
+        # Extract keywords
         text = f"{expected} {question}"
-        # 简单的关键词提取（去除常见停用词）
+        # Simple keyword extraction (remove common stop-words)
         stop_words = {'的', '了', '和', '是', '在', '有', '与', '等', '如', '为',
                      'the', 'a', 'an', 'is', 'are', 'was', 'were', 'in', 'on', 'at'}
 
         words = re.findall(r'\w+', text.lower())
         self._expected_keywords = {w for w in words if w not in stop_words and len(w) > 1}
 
-        # 提取可能的格式模式（如数字格式、选项格式等）
-        # 检查是否是选择题格式（A/B/C/D）
+        # Extract possible format patterns (e.g., numbers, option letters, etc.)
+        # Check whether it looks like a multiple-choice format (A/B/C/D)
         if re.search(r'\b[A-D]\b', expected):
             self._format_patterns.append(r'\b[A-D]\b')
 
-        # 检查是否是数值格式
+        # Check whether it contains numeric values
         if re.search(r'\d+\.?\d*', expected):
             self._format_patterns.append(r'\d+\.?\d*')
 
-        # 检查是否是列表格式
+        # Check whether it looks like a list format
         if re.search(r'[，,]', expected):
             self._format_patterns.append(r'[，,]')
 
     def _evaluate_format(self, content: str) -> float:
         """
-        评估格式匹配度
+        Evaluate format matching.
 
-        检查输出是否符合预期的格式模式
+        Checks whether the output matches expected format patterns.
         """
         if not self._format_patterns:
-            return 0.5  # 没有特定格式要求，给中等分
+            return 0.5  # No specific format requirement: return a neutral score
 
         matches = 0
         for pattern in self._format_patterns:
@@ -154,12 +155,12 @@ class ApproximateEvaluator(EvaluatorBase):
 
     def _evaluate_keywords(self, content: str) -> float:
         """
-        评估关键词覆盖度
+        Evaluate keyword coverage.
 
-        检查输出中包含了多少预期的关键词
+        Checks how many expected keywords are present in the output.
         """
         if not self._expected_keywords:
-            return 0.5  # 没有关键词，给中等分
+            return 0.5  # No keywords: return a neutral score
 
         content_words = set(re.findall(r'\w+', content.lower()))
         matched = self._expected_keywords & content_words
@@ -169,14 +170,14 @@ class ApproximateEvaluator(EvaluatorBase):
 
     def _evaluate_similarity(self, content: str, expected: str) -> float:
         """
-        评估与预期答案的相似度
+        Evaluate similarity to expected output.
 
-        使用简单的字符串相似度算法
+        Uses a simple string similarity algorithm.
         """
         if not expected:
-            return 0.5  # 没有预期答案，给中等分
+            return 0.5  # No expected output: return a neutral score
 
-        # 使用 SequenceMatcher 计算相似度
+        # Compute similarity using SequenceMatcher
         similarity = SequenceMatcher(None, content.lower(), expected.lower()).ratio()
 
         return similarity
@@ -187,21 +188,22 @@ class ApproximateEvaluator(EvaluatorBase):
         evaluations: list[EvaluationResult]
     ) -> tuple[list[Candidate], list[EvaluationResult]]:
         """
-        过滤出有潜力的候选
+        Filter promising candidates.
 
-        用于两阶段评估的第一阶段，只保留值得精确评估的候选
+        Used in the first stage of two-phase evaluation to keep only candidates
+        worth a more accurate evaluation.
         """
         promising = []
         promising_evals = []
 
-        # 按分数排序
+        # Sort by score
         sorted_pairs = sorted(
             zip(candidates, evaluations),
             key=lambda x: x[1].score,
             reverse=True
         )
 
-        # 只保留高置信度的，且不超过最大数量
+        # Keep only high-confidence candidates, capped at the configured maximum
         for candidate, evaluation in sorted_pairs[:self.config.max_candidates]:
             if evaluation.metadata.get('is_promising', False):
                 promising.append(candidate)
@@ -212,9 +214,9 @@ class ApproximateEvaluator(EvaluatorBase):
 
 class RuleBasedApproximateEvaluator(ApproximateEvaluator):
     """
-    基于规则的快速评估器
+    Rule-based fast evaluator.
 
-    适用于有明确规则的场景（如格式检查、必要字段验证等）
+    Useful when explicit rules exist (e.g., format checks, required field validation).
     """
 
     def __init__(self, rules: list[dict] = None, config: ApproximateConfig = None):
@@ -230,9 +232,9 @@ class RuleBasedApproximateEvaluator(ApproximateEvaluator):
         self.rules = rules or []
 
     def evaluate(self, candidate: Candidate, context: dict) -> EvaluationResult:
-        """基于规则进行快速评估"""
+        """Quickly evaluate a candidate using rules."""
         if not self.rules:
-            # 没有规则，回退到父类的近似评估
+            # No rules provided: fall back to the parent approximate evaluation
             return super().evaluate(candidate, context)
 
         content = candidate.content
@@ -247,16 +249,16 @@ class RuleBasedApproximateEvaluator(ApproximateEvaluator):
             required = rule.get('required', False)
 
             if re.search(pattern, content):
-                # 规则匹配
+                # Rule matched
                 total_score += weight
             else:
-                # 规则未匹配
+                # Rule not matched
                 if required:
                     failed_required.append(name)
 
             total_weight += weight
 
-        # 如果有必需规则未满足，直接给低分
+        # If any required rule is not satisfied, force a low score
         if failed_required:
             normalized_score = 0.1
             error_types = [f'missing_required_{rule}' for rule in failed_required]
@@ -288,7 +290,7 @@ def create_default_approximate_evaluator(
     min_confidence: float = 0.3,
     max_candidates: int = 10
 ) -> ApproximateEvaluator:
-    """创建默认配置的近似评估器"""
+    """Create an approximate evaluator with a default configuration."""
     config = ApproximateConfig(
         format_weight=0.3,
         keyword_weight=0.3,

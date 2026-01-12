@@ -102,4 +102,4 @@ __all__ = [
     'get_registry',
 ]
 
-__version__ = '0.2.0'  # Phase 2 完成
+__version__ = '0.2.0'  # Phase 2 completed

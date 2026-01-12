@@ -1,8 +1,8 @@
-#!/usr/bin/env python3.10
+#!/usr/bin/env python3
 """
 Experiment creation script for Dolphin Language.
 
-Usage: ./experiments/bin/create --name experiment_name --dolphins dph_folder
+Usage: ./bin/create --name experiment_name --dolphins dph_folder
 """
 
 import os
@@ -18,16 +18,16 @@ def main():
     
     args = parser.parse_args()
     
-    # Get the root directory (dolphin-language)
+    # Get the repo root directory
     script_path = Path(__file__).resolve()
-    root_dir = script_path.parent.parent.parent  # Go up from bin/experiments/ to root
+    root_dir = script_path.parent.parent  # bin/ -> repo root
     
     # Validate experiment name doesn't conflict
-    design_dir = root_dir / "experiments" / "design"
+    design_dir = root_dir / "design"
     experiment_dir = design_dir / args.name
     
     if experiment_dir.exists():
-        print(f"Error: Experiment '{args.name}' already exists in experiments/design/", file=sys.stderr)
+        print(f"Error: Experiment '{args.name}' already exists in design/", file=sys.stderr)
         sys.exit(1)
     
     # Validate dolphins folder exists and contains .dph files
@@ -51,7 +51,7 @@ def main():
     
     try:
         # Copy spec.txt from prototype
-        prototype_spec = root_dir / "experiments" / "prototype" / "spec.txt"
+        prototype_spec = root_dir / "prototype" / "spec.txt"
         if prototype_spec.exists():
             shutil.copy2(prototype_spec, experiment_dir / "spec.txt")
         else:
@@ -60,14 +60,9 @@ def main():
             with open(experiment_dir / "spec.txt", "w") as f:
                 f.write('entrypoints: ["main.dph"]\nconfigs:\n  - vm.host: localhost\n    fast: true\nnum_samples: 1\nsample_method: SEQ\n')
         
-        # Copy config directory
-        config_source = root_dir / "config"
+        # Create empty config directory (user can add global.yaml etc. as needed)
         config_dest = experiment_dir / "config"
-        if config_source.exists():
-            shutil.copytree(config_source, config_dest)
-        else:
-            print(f"Warning: Config directory not found at {config_source}")
-            config_dest.mkdir()
+        config_dest.mkdir()
         
         # Copy dolphins directory
         dolphins_dest = experiment_dir / "dolphins"
@@ -77,9 +72,9 @@ def main():
         runs_dir = experiment_dir / "runs"
         runs_dir.mkdir()
         
-        print(f"Successfully created experiment '{args.name}' in experiments/design/")
+        print(f"Successfully created experiment '{args.name}' in design/")
         print(f"Structure created:")
-        print(f"  experiments/design/{args.name}/")
+        print(f"  design/{args.name}/")
         print(f"    ├── spec.txt")
         print(f"    ├── config/")
         print(f"    ├── dolphins/ ({len(dph_files)} .dph files)")

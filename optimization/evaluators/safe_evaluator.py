@@ -153,11 +153,11 @@ class SafeEvaluator(EvaluatorBase):
         """
         Evaluate using temporary file mode.
 
-        完整实现 temp_file 模式，用于 PromptOptimizer：
-        1. 创建临时 .dph 文件
-        2. 执行 dolphin run 命令
-        3. 捕获输出并评估
-        4. 根据 cleanup_policy 清理临时文件
+        Full implementation of temp_file mode for PromptOptimizer:
+        1. Create a temporary .dph file
+        2. Execute a dolphin run command
+        3. Capture output and evaluate
+        4. Clean up temporary files based on cleanup_policy
 
         Args:
             candidate: Candidate with temp_file execution context
@@ -169,25 +169,25 @@ class SafeEvaluator(EvaluatorBase):
         exec_ctx = candidate.execution_context
 
         with TempFileManager(exec_ctx) as temp_mgr:
-            # 1. 创建临时文件
+            # 1. Create temporary file
             temp_file = temp_mgr.create_temp_file(candidate.content)
 
-            # 2. 构建执行命令
-            # 如果 context 中有额外的参数，添加到命令中
+            # 2. Build execution command
+            # Add extra arguments from context if provided
             cmd = ["dolphin", "run", str(temp_file)]
 
-            # 添加额外的变量（如果有）
+            # Add extra variables if present
             if exec_ctx.variables:
                 cmd.extend(["--vars", json.dumps(exec_ctx.variables)])
 
-            # 添加其他参数（如 case_id, knowledge 等）
+            # Add other parameters (e.g., case_id, knowledge)
             if 'case_id' in context:
                 cmd.extend(["--case_id", str(context['case_id'])])
             if 'knowledge_file' in context:
                 cmd.extend(["--knows", str(context['knowledge_file'])])
 
-            # 3. 执行命令（带超时和错误处理）
-            timeout = context.get('timeout', 60)  # 默认 60 秒超时
+            # 3. Execute command (with timeout and error handling)
+            timeout = context.get('timeout', 60)  # Default timeout: 60 seconds
 
             try:
                 result = subprocess.run(
@@ -198,13 +198,13 @@ class SafeEvaluator(EvaluatorBase):
                     cwd=exec_ctx.base_path or Path.cwd()
                 )
 
-                # 4. 解析输出
+                # 4. Parse output
                 actual_output = result.stdout.strip()
                 exit_code = result.returncode
 
-                # 5. 使用外部评估器进行评估（如果提供）
+                # 5. Evaluate with an external evaluator (if provided)
                 if 'external_evaluator' in context:
-                    # 使用提供的评估器（如 SemanticJudge）
+                    # Use the provided evaluator (e.g., SemanticJudge)
                     evaluator_fn = context['external_evaluator']
                     eval_result = evaluator_fn(
                         actual=actual_output,
@@ -213,14 +213,14 @@ class SafeEvaluator(EvaluatorBase):
                         knowledge=context.get('knowledge', '')
                     )
 
-                    # 如果评估器返回 EvaluationResult，直接使用
+                    # If the evaluator returns EvaluationResult, use it directly
                     if isinstance(eval_result, EvaluationResult):
-                        # 补充 temp_file 相关的 metadata
+                        # Attach temp_file-related metadata
                         eval_result.metadata['temp_file'] = str(temp_file)
                         eval_result.metadata['exit_code'] = exit_code
                         return eval_result
                     elif isinstance(eval_result, dict):
-                        # 如果返回字典，构建 EvaluationResult
+                        # If it returns a dict, build an EvaluationResult
                         return EvaluationResult(
                             candidate=candidate,
                             score=eval_result.get('score', 0.0),
@@ -229,11 +229,11 @@ class SafeEvaluator(EvaluatorBase):
                             metadata={
                                 'temp_file': str(temp_file),
                                 'exit_code': exit_code,
-                                'actual_output': actual_output[:200]  # 截断输出
+                                'actual_output': actual_output[:200]  # Truncate output
                             }
                         )
 
-                # 6. 如果没有外部评估器，使用简单的成功/失败评估
+                # 6. Without an external evaluator, fall back to success/failure scoring
                 if exit_code == 0:
                     score = 1.0
                 else:
@@ -253,7 +253,7 @@ class SafeEvaluator(EvaluatorBase):
                 )
 
             except subprocess.TimeoutExpired:
-                # 超时
+                # Timeout
                 return EvaluationResult(
                     candidate=candidate,
                     score=0.0,
@@ -265,7 +265,7 @@ class SafeEvaluator(EvaluatorBase):
                     }
                 )
             except Exception as e:
-                # 其他错误
+                # Other errors
                 return EvaluationResult(
                     candidate=candidate,
                     score=0.0,

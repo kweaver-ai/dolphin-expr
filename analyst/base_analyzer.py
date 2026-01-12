@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-BaseAnalyzer: 所有分析器的基类
+BaseAnalyzer: Base class for all analyzers
 
-提供公共的数据访问和处理方法：
-- benchmark数据获取
-- 知识文件加载
-- 结果提取
-- 通用初始化
+Provides shared data access and processing helpers:
+- Benchmark data loading
+- Knowledge file loading
+- Result extraction
+- Common initialization
 """
 
 import json
@@ -16,14 +16,14 @@ from typing import Optional, Dict, Any, List
 
 
 class BaseAnalyzer:
-    """分析器基类"""
+    """Base analyzer class."""
 
     def __init__(self, data_loader):
         """
-        初始化分析器基类
+        Initialize the base analyzer.
 
         Args:
-            data_loader: ExperimentDataLoader实例
+            data_loader: An ExperimentDataLoader instance.
         """
         self.data_loader = data_loader
         self.experiment_path = data_loader.experiment_path
@@ -39,54 +39,44 @@ class BaseAnalyzer:
         id_fields: Optional[List[str]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
-        获取benchmark数据 - 通用实现
+        Get benchmark data (generic implementation).
 
         Args:
-            case_num: case编号
-            search_paths: 自定义搜索路径列表（可选，默认使用标准路径）
-            id_fields: 用于匹配case的ID字段名列表（可选，默认为['test_id', 'id', 'question_id']）
+            case_num: Case number.
+            search_paths: Optional custom search paths (defaults to standard paths).
+            id_fields: Optional list of ID field names used to match the case
+                (defaults to ['test_id', 'id', 'question_id']).
 
         Returns:
-            benchmark数据字典，如果找不到返回None
+            A benchmark dict, or None if not found.
         """
-        # 默认搜索路径
+        # Default search paths
         if search_paths is None:
             case_num_padded = self._format_case_num(case_num)
             case_num_clean = case_num.lstrip("0") or "0"
 
             search_paths = [
-                # 实验目录下的benchmark文件
+                # Benchmark files under the experiment directory
                 self.experiment_path / "benchmark" / f"test_{case_num_padded}.json",
                 self.experiment_path / "benchmark" / f"test_{case_num_clean}.json",
                 self.experiment_path / "tests" / f"test_{case_num_clean}.json",
                 self.experiment_path / "tests" / f"case_{case_num_clean}.json",
                 self.experiment_path / "benchmark.json",
-                # 全局benchmark数据目录
-                self.root_dir
-                / "experiments"
+                # Global benchmark directory
+                self.root_dir / "benchmark" / "watsons" / "benchmark.json",
+                self.root_dir / "benchmark" / "bird_dev" / "benchmark.json",
+                # Benchmark directory relative to this file (convenient for different CWDs)
+                Path(__file__).resolve().parent.parent
                 / "benchmark"
-                / "data"
-                / "watsons"
-                / "benchmark.json",
-                self.root_dir
-                / "experiments"
-                / "benchmark"
-                / "data"
-                / "bird_dev"
-                / "benchmark.json",
-                # 相对于当前文件的benchmark目录
-                Path(__file__).parent.parent
-                / "benchmark"
-                / "data"
                 / "watsons"
                 / "benchmark.json",
             ]
 
-        # 默认ID字段
+        # Default ID fields
         if id_fields is None:
             id_fields = ["test_id", "id", "question_id"]
 
-        # 遍历搜索路径
+        # Iterate over search paths
         for benchmark_file in search_paths:
             if not benchmark_file.exists():
                 continue
@@ -95,12 +85,12 @@ class BaseAnalyzer:
                 with open(benchmark_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
-                # 处理不同数据格式
+                # Handle different data formats
                 if isinstance(data, dict):
                     return data
                 elif isinstance(data, list):
                     case_num_int = int(case_num.lstrip("0") or "0")
-                    # 尝试不同的ID字段匹配
+                    # Try matching by different ID fields
                     for item in data:
                         for id_field in id_fields:
                             if (
@@ -108,7 +98,7 @@ class BaseAnalyzer:
                                 or item.get(id_field) == case_num_int - 1
                             ):
                                 return item
-                    # 如果没有找到匹配的item，继续搜索下一个文件
+                    # If no matching item is found, continue to the next file
                     continue
 
             except Exception as e:
@@ -122,52 +112,51 @@ class BaseAnalyzer:
         self, knowledge_path: Optional[str], run_name: Optional[str] = None
     ) -> str:
         """
-        加载业务知识
+        Load domain knowledge.
 
         Args:
-            knowledge_path: 知识文件或文件夹路径
-            run_name: run名称（用于相对路径查找）
+            knowledge_path: Path to a knowledge file or directory.
+            run_name: Run name (used for relative path resolution).
 
         Returns:
-            知识内容字符串
+            Knowledge content as a string.
         """
         if not knowledge_path:
             return ""
 
-        # 处理路径：相对路径优先在实验环境中查找
+        # Path handling: for relative paths, prefer resolving within the experiment environment
         path = Path(knowledge_path)
         if not path.is_absolute():
-            # 如果是相对路径，尝试以下路径：
+            # If this is a relative path, try the following locations:
             possible_paths = []
 
-            # 1) run 目录（如有 run_name）
+            # 1) Run directory (if run_name is provided)
             if run_name:
                 run_dir = self._find_run_directory(run_name)
                 if run_dir:
                     run_path = run_dir / knowledge_path
                     if run_path.exists():
-                        possible_paths.append(run_path)  # 优先级最高
+                        possible_paths.append(run_path)  # Highest priority
 
-            # 2) 设计目录（根据实验名推断）
+            # 2) Design directory (inferred from experiment name)
             design_base = (
                 self.experiment_name.split("_")[0] if self.experiment_name else None
             )
             if design_base:
                 design_path = (
                     self.root_dir
-                    / "experiments"
                     / "design"
                     / design_base
                     / knowledge_path
                 )
                 possible_paths.append(design_path)
 
-            # 3) 实验根目录、项目根目录、当前工作目录
+            # 3) Experiment root, project root, and current working directory
             possible_paths.extend(
                 [
-                    self.experiment_path / knowledge_path,  # 实验环境目录
-                    self.root_dir / knowledge_path,  # 项目根目录
-                    Path.cwd() / knowledge_path,  # 当前工作目录
+                    self.experiment_path / knowledge_path,  # Experiment environment directory
+                    self.root_dir / knowledge_path,  # Project root directory
+                    Path.cwd() / knowledge_path,  # Current working directory
                 ]
             )
 
@@ -183,15 +172,15 @@ class BaseAnalyzer:
 
         try:
             if path.is_file():
-                # 单个文件
+                # Single file
                 with open(path, "r", encoding="utf-8") as f:
                     content = f.read()
                 print(f"✅ 成功加载知识文件: {path} ({len(content)} 字符)")
                 return content
             elif path.is_dir():
-                # 文件夹：合并所有文件
+                # Directory: merge all files
                 all_content = []
-                for file_path in path.rglob("*.md"):  # 只读取markdown文件
+                for file_path in path.rglob("*.md"):  # Only read Markdown files
                     try:
                         with open(file_path, "r", encoding="utf-8") as f:
                             file_content = f.read()
@@ -215,15 +204,15 @@ class BaseAnalyzer:
         self, log_content: str, start_marker: str, end_marker: str
     ) -> Optional[str]:
         """
-        从日志内容中提取结果
+        Extract a result from log content.
 
         Args:
-            log_content: 日志内容
-            start_marker: 开始标记
-            end_marker: 结束标记
+            log_content: Log content.
+            start_marker: Start marker.
+            end_marker: End marker.
 
         Returns:
-            提取的结果，如果找不到返回None
+            Extracted result, or None if not found.
         """
         try:
             start_pos = log_content.find(start_marker)
@@ -234,7 +223,7 @@ class BaseAnalyzer:
             if end_pos == -1:
                 return None
 
-            # 提取标记之间的内容
+            # Extract content between markers
             content_start = start_pos + len(start_marker)
             extracted_content = log_content[content_start:end_pos].strip()
 
@@ -246,17 +235,17 @@ class BaseAnalyzer:
 
     def _find_run_directory(self, run_name: str) -> Optional[Path]:
         """
-        查找run目录，支持多种命名格式
+        Find a run directory, supporting multiple naming formats.
 
         Args:
-            run_name: run名称
+            run_name: Run name.
 
         Returns:
-            run目录路径，如果找不到返回None
+            Run directory path, or None if not found.
         """
-        # 尝试不同的run目录命名格式
+        # Try different run directory naming formats
         possible_names = [
-            run_name,  # 原始名称
+            run_name,  # Original name
             run_name.replace("run", "run_"),  # run001 -> run_001
             f"run_{run_name.replace('run', '').zfill(3)}",  # run1 -> run_001
             f"run_{run_name.replace('run_', '').zfill(3)}",  # run_1 -> run_001
@@ -273,25 +262,25 @@ class BaseAnalyzer:
 
     def _format_case_num(self, case_num: str) -> str:
         """
-        格式化case编号为3位补零格式
+        Format case number as a 3-digit, zero-padded string.
 
         Args:
-            case_num: case编号字符串
+            case_num: Case number as a string.
 
         Returns:
-            格式化后的case编号（如：001, 002, 123）
+            Formatted case number (e.g., 001, 002, 123).
         """
         return f"{int(case_num):03d}"
 
     def _create_output_directory(self, subdir: str) -> Path:
         """
-        创建输出目录
+        Create an output directory.
 
         Args:
-            subdir: 子目录名称
+            subdir: Subdirectory name.
 
         Returns:
-            创建的目录路径
+            The created directory path.
         """
         output_dir = self.experiment_path / subdir
         output_dir.mkdir(exist_ok=True, parents=True)

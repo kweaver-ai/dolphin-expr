@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 """
-注入内容优化器（纯语义驱动）
+Inject content optimizer (semantic-driven only).
 
-核心思想：基于 SemanticJudge 的诊断结果（score、error_types、action_vector、candidate_injects）
-生成注入内容并控制收敛，损失为语义损失 loss = 1 - score。
+Core idea:
+Generate inject content and control convergence based on SemanticJudge diagnostics
+(score, error_types, action_vector, candidate_injects). The loss is defined as
+semantic loss: loss = 1 - score.
 
-安全约束：不泄露答案到注入内容中。
+Safety: do not leak answers into inject content.
 """
 
 import re
@@ -24,21 +26,21 @@ except ImportError:
 
 
 class ErrorType(Enum):
-    """错误类型分类"""
+    """Error type categories."""
 
-    FIELD_ERROR = "field_error"  # 字段使用错误
-    CALCULATION_ERROR = "calc_error"  # 计算逻辑错误
-    FORMAT_ERROR = "format_error"  # 输出格式错误
-    INCOMPLETE = "incomplete"  # 结果不完整
-    MAGNITUDE_ERROR = "magnitude"  # 数量级错误
-    LOGIC_ERROR = "logic_error"  # 逻辑推理错误
-    TIMEOUT_ERROR = "timeout_error"  # 执行超时
+    FIELD_ERROR = "field_error"  # Field usage error
+    CALCULATION_ERROR = "calc_error"  # Calculation/logic error
+    FORMAT_ERROR = "format_error"  # Output format error
+    INCOMPLETE = "incomplete"  # Incomplete result
+    MAGNITUDE_ERROR = "magnitude"  # Order-of-magnitude error
+    LOGIC_ERROR = "logic_error"  # Reasoning/logic error
+    TIMEOUT_ERROR = "timeout_error"  # Execution timeout
     UNKNOWN = "unknown"
 
 
 @dataclass
 class FailureRecord:
-    """失败记录"""
+    """Failure record."""
 
     iteration: int
     inject_content: str
@@ -50,7 +52,7 @@ class FailureRecord:
 
 @dataclass
 class OptimizationInfo:
-    """优化信息"""
+    """Optimization info."""
 
     gradient: Dict
     learning_rate: float
@@ -61,7 +63,7 @@ class OptimizationInfo:
 
 class InjectsOptimizer:
     """
-    基于梯度下降思想的注入内容优化器
+    Inject content optimizer inspired by gradient descent.
     """
 
     def __init__(
@@ -77,18 +79,18 @@ class InjectsOptimizer:
         self.patience = patience
         self.min_learning_rate = min_learning_rate
 
-        # 状态记录
+        # State tracking
         self.velocity = {}
         self.failure_history: List[FailureRecord] = []
         self.loss_history: List[float] = []
         self.best_loss = float("inf")
         self.plateau_count = 0
 
-        # Baseline记录
+        # Baseline tracking
         self.baseline_result = None
         self.baseline_loss = None
 
-        # 语义驱动上下文（可选）
+        # Semantic-driven context (optional)
         self._semantic_judge: Any | None = None
         self._semantic_analysis_content: str = ""
         self._semantic_knowledge: str = ""
@@ -102,10 +104,12 @@ class InjectsOptimizer:
         previous_inject: str = "",
     ) -> Tuple[str, OptimizationInfo]:
         """
-        主优化函数
-        返回: (优化后的注入内容, 优化信息)
+        Main optimization entry.
+
+        Returns:
+            (optimized inject content, optimization info)
         """
-        # 语义驱动（必须启用）
+        # Semantic-driven mode (must be enabled)
         if not (self._semantic_judge is not None):
             raise RuntimeError(
                 "Semantic mode not enabled. Call enable_semantic(...) before optimize()."
@@ -139,12 +143,12 @@ class InjectsOptimizer:
         return new_inject, opt_info
 
     def enable_semantic(self, judge: Any, analysis_content: str, knowledge: str = ""):
-        """启用语义驱动模式。
+        """Enable semantic-driven mode.
 
         Args:
-            judge: SemanticJudge 实例（需提供 evaluate 接口）
-            analysis_content: 跨 run 汇总分析
-            knowledge: 业务知识文本
+            judge: SemanticJudge instance (must provide evaluate()).
+            analysis_content: Cross-run summary analysis.
+            knowledge: Domain knowledge text.
         """
         self._semantic_judge = judge
         self._semantic_analysis_content = analysis_content or ""
@@ -153,7 +157,7 @@ class InjectsOptimizer:
     def _build_semantic_gradient(
         self, semantic_grad: SemanticGradient, actual: str, expected: str
     ) -> Dict:
-        """将 SemanticGradient 映射为内部梯度结构。"""
+        """Map SemanticGradient to an internal gradient structure."""
         score = semantic_grad.score
         error_types = semantic_grad.error_types
         action_vector = semantic_grad.action_vector
@@ -202,7 +206,7 @@ class InjectsOptimizer:
         return gradient
 
     def _map_semantic_error_to_enum(self, err: str) -> ErrorType:
-        """将语义裁判的错误类型字符串映射为内部枚举。"""
+        """Map SemanticJudge error-type strings to internal enum values."""
         if not err:
             return ErrorType.UNKNOWN
         e = err.lower()
@@ -223,17 +227,16 @@ class InjectsOptimizer:
         return ErrorType.UNKNOWN
 
     def set_baseline(self, baseline_result: str, baseline_loss: float):
-        """设置baseline以供对比"""
+        """Set baseline values for comparison."""
         self.baseline_result = baseline_result
         self.baseline_loss = baseline_loss
         print(f"📊 设置baseline: 损失={baseline_loss:.4f}")
 
-    # 已移除：基于表层统计的损失函数，使用语义损失（1 - score）
-
-    # 已移除：启发式梯度计算（统一改为语义裁判驱动）
+    # Removed: surface-statistics loss function; use semantic loss (1 - score)
+    # Removed: heuristic gradient calculation; unified to SemanticJudge-driven gradient
 
     def _is_error_output(self, output: str) -> bool:
-        """简单判断是否是错误输出"""
+        """Heuristically determine whether this is an error output."""
         if not output:
             return True
         lower_output = output.lower()
@@ -243,11 +246,11 @@ class InjectsOptimizer:
         )
 
     def _count_stuck_iterations(self) -> int:
-        """计算卡住的迭代次数"""
+        """Count consecutive iterations stuck in the same error type."""
         if len(self.failure_history) < 2:
             return 0
 
-        # 计算连续相同错误的次数
+        # Count consecutive identical errors
         current_error = self.failure_history[-1].error_type
         stuck_count = 0
         for record in reversed(self.failure_history):
@@ -257,12 +260,11 @@ class InjectsOptimizer:
                 break
         return stuck_count
 
-    # 已移除：_classify_error/_classify_error_simple 与基础特征方法（语义驱动下不需要）
-
-    # 已移除：启发式优化方向（由语义裁判的 action_vector/candidate_injects 取代）
+    # Removed: _classify_error/_classify_error_simple and basic feature methods (not needed in semantic mode)
+    # Removed: heuristic optimization directions (replaced by action_vector/candidate_injects)
 
     def _update_momentum(self, gradient: Dict):
-        """更新动量"""
+        """Update momentum."""
         error_type_key = gradient["error_type"].value
 
         if "error_type" not in self.velocity:
@@ -271,7 +273,7 @@ class InjectsOptimizer:
         if error_type_key not in self.velocity["error_type"]:
             self.velocity["error_type"][error_type_key] = 0
 
-        # 更新动量
+        # Update momentum
         self.velocity["error_type"][error_type_key] = (
             self.momentum * self.velocity["error_type"][error_type_key]
             + (1 - self.momentum) * gradient["magnitude"]
@@ -281,21 +283,21 @@ class InjectsOptimizer:
         self, gradient: Dict, knowledge_base: str, iteration: int, learning_rate: float
     ) -> str:
         """
-        注入生成：优先采用语义候选与行动向量，其次回退到 hint 组合
+        Inject generation: prefer semantic candidates/action vectors, otherwise fall back to hint composition.
         """
-        # 优先直接采用候选注入
+        # Prefer candidate injects
         cand = gradient.get("candidate_injects") or []
         if isinstance(cand, list) and cand:
             return cand[0]
 
-        # 其次采用行动向量
+        # Otherwise use action vectors
         actions = gradient.get("action_vector") or []
         if isinstance(actions, list) and actions:
             return "；".join(actions)
 
         inject_parts = []
 
-        # 基于语义提示的简单指导
+        # Simple guidance based on semantic hints
         semantic_hint = gradient.get("semantic_hint", "needs_refinement")
 
         if semantic_hint == "no_output":
@@ -309,7 +311,7 @@ class InjectsOptimizer:
         else:
             inject_parts.append("请仔细检查分析质量，确保准确性")
 
-        # 基于失败次数调整策略
+        # Adjust strategy based on failure count
         failure_count = gradient.get("failure_count", 0)
         if failure_count > 2:
             inject_parts.append("请尝试不同的分析方法")
@@ -318,14 +320,14 @@ class InjectsOptimizer:
         if stuck_count > 1:
             inject_parts.append("请从新的角度重新思考问题")
 
-        # 添加知识库内容（简化处理）
+        # Add knowledge base content (simplified)
         if knowledge_base and len(knowledge_base) > 50:
-            # 直接使用知识库的前200字符，让LLM自己理解相关性
+            # Use only the first 200 characters and let the LLM infer relevance
             knowledge_excerpt = knowledge_base[:200].strip()
             if knowledge_excerpt:
                 inject_parts.append(f"参考要点：{knowledge_excerpt}")
 
-        # 基于baseline改进情况的指导
+        # Guidance based on baseline comparison
         if gradient.get("improved_from_baseline", False):
             improvement = gradient.get("improvement_ratio", 0)
             if improvement > 0.3:
@@ -335,27 +337,27 @@ class InjectsOptimizer:
         elif gradient.get("improvement_ratio", 0) < 0:
             inject_parts.append("当前方法可能有问题，请调整策略")
 
-        # 组合所有部分
+        # Combine all parts
         base_inject = (
             "；".join(inject_parts) if inject_parts else "请仔细分析并提供准确结果"
         )
 
-        # 根据迭代次数增强强调
+        # Increase emphasis based on iteration count
         if iteration > 0:
             base_inject = f"第{iteration + 1}次提醒：{base_inject}"
 
         return base_inject
 
-    # 已移除：知识提取/历史学习等启发式辅助方法
+    # Removed: heuristic helpers such as knowledge extraction/history learning
 
     def _generate_baseline_guidance(self, baseline_comparison: Dict) -> str:
-        """基于baseline对比生成指导"""
+        """Generate guidance based on baseline comparison."""
         if not baseline_comparison:
             return ""
 
         guidance_parts = []
 
-        # 根据改进/退化幅度提供通用指导
+        # Provide generic guidance based on improvement/degradation magnitude
         if not baseline_comparison.get("is_better", False):
             degradation_ratio = baseline_comparison.get("degradation_ratio", 0)
             if degradation_ratio > 0.2:
@@ -365,45 +367,45 @@ class InjectsOptimizer:
         else:
             guidance_parts.append("方向正确，建议继续沿此方向细化")
 
-        # 如果改进很小，提供更激进的策略
+        # If improvement is small, suggest more aggressive strategy changes
         improvement = baseline_comparison.get("improvement", 0)
-        if 0 < improvement < 0.1:  # 改进很小
+        if 0 < improvement < 0.1:  # Small improvement
             guidance_parts.append("需要更大的策略调整来实现突破")
 
         if guidance_parts:
             return f"基于baseline对比：{' '.join(guidance_parts)}"
         return ""
 
-    # 已移除：失败模式与重复错误启发式（语义驱动下不需要）
+    # Removed: failure-mode and repeated-error heuristics (not needed in semantic mode)
 
     def _get_adaptive_learning_rate(self, iteration: int) -> float:
-        """自适应学习率"""
-        # 基础衰减
+        """Adaptive learning rate."""
+        # Base decay
         decay_rate = 0.9
         base_lr = self.initial_learning_rate * (decay_rate**iteration)
 
-        # 根据收敛状态调整
+        # Adjust based on convergence status
         if self._check_convergence() == "stuck":
-            base_lr *= 1.5  # 增加探索
+            base_lr *= 1.5  # Increase exploration
         elif self._check_convergence() == "oscillating":
-            base_lr *= 0.5  # 减少震荡
+            base_lr *= 0.5  # Reduce oscillation
 
         return max(base_lr, self.min_learning_rate)
 
     def _check_convergence(self) -> str:
-        """检查收敛状态"""
+        """Check convergence status."""
         if len(self.loss_history) < 3:
             return "initializing"
 
         recent_losses = self.loss_history[-3:]
 
-        # 检查是否卡住
+        # Check whether we are stuck
         if len(self.failure_history) >= 2:
             recent_errors = [f.error_type for f in self.failure_history[-2:]]
             if recent_errors[0] == recent_errors[1]:
                 return "stuck"
 
-        # 检查是否震荡
+        # Check whether we are oscillating
         if len(recent_losses) >= 3:
             if (
                 recent_losses[0] < recent_losses[1] > recent_losses[2]
@@ -411,18 +413,18 @@ class InjectsOptimizer:
             ):
                 return "oscillating"
 
-        # 检查是否改善
+        # Check whether we are improving
         if recent_losses[-1] < recent_losses[0]:
             return "improving"
 
         return "plateau"
 
     def should_early_stop(self) -> bool:
-        """检查是否应该早停"""
+        """Check whether early stopping should trigger."""
         if len(self.loss_history) < self.patience:
             return False
 
-        # 检查最近几次是否没有改善
+        # Check whether there has been no improvement recently
         recent_losses = self.loss_history[-self.patience :]
         if max(recent_losses) - min(recent_losses) < 0.01:
             self.plateau_count += 1
@@ -432,7 +434,7 @@ class InjectsOptimizer:
         return False
 
     def random_exploration(self, knowledge_base: str) -> str:
-        """随机探索新策略"""
+        """Randomly explore a new strategy."""
         strategies = [
             "请从不同角度重新分析问题",
             "建议简化查询逻辑，分步骤执行",
@@ -443,7 +445,7 @@ class InjectsOptimizer:
         base_strategy = random.choice(strategies)
 
         if knowledge_base and len(knowledge_base) > 100:
-            # 随机选择知识库的一部分
+            # Randomly sample a portion of the knowledge base
             start_pos = random.randint(0, len(knowledge_base) - 100)
             knowledge_fragment = knowledge_base[start_pos : start_pos + 200]
             return f"{base_strategy}。参考知识：{knowledge_fragment}"
@@ -458,50 +460,50 @@ class InjectsOptimizer:
         gradient: Dict,
         loss: float,
     ):
-        """记录失败信息"""
+        """Record failure information."""
         record = FailureRecord(
             iteration=iteration,
             inject_content=inject_content,
-            actual_output=actual_output[:500],  # 限制长度
+            actual_output=actual_output[:500],  # Length cap
             error_type=gradient["error_type"],
             error_features=gradient.get("features", {}),
             loss=loss,
         )
         self.failure_history.append(record)
 
-        # 只保留最近的记录
+        # Keep only the most recent records
         if len(self.failure_history) > 10:
             self.failure_history = self.failure_history[-10:]
 
     def _audit_inject(self, inject_content: str, expected: str):
-        """审计注入内容，确保不包含答案"""
-        # 检查直接的答案关键词
+        """Audit inject content to ensure it does not contain the answer."""
+        # Check direct answer keywords
         dangerous_patterns = [
             r"答案是",
-            r"结果是.*\d",  # 只匹配"结果是"后面跟数字的情况
+            r"结果是.*\d",  # Only match cases where digits follow "结果是"
             r"应该是",
             r"正确答案",
-            r"计算结果.*\d",  # 只匹配"计算结果"后面跟数字的情况
+            r"计算结果.*\d",  # Only match cases where digits follow "计算结果"
         ]
 
         for pattern in dangerous_patterns:
             if re.search(pattern, inject_content):
                 raise ValueError(f"注入内容包含危险模式: {pattern}")
 
-        # 提取答案中的关键片段（避免短词误判）
+        # Extract key fragments from expected (avoid false positives for short terms)
         answer_fragments = []
         words = expected.split()
         for i in range(len(words)):
-            for j in range(i + 2, min(i + 6, len(words) + 1)):  # 2-5个词的片段
+            for j in range(i + 2, min(i + 6, len(words) + 1)):  # 2-5 word fragments
                 fragment = " ".join(words[i:j])
-                if len(fragment) > 8:  # 只检查较长的片段，提高阈值
+                if len(fragment) > 8:  # Only check longer fragments to reduce false positives
                     answer_fragments.append(fragment)
 
         for fragment in answer_fragments:
             if fragment.lower() in inject_content.lower():
                 raise ValueError(f"注入内容可能泄露答案片段: {fragment[:20]}...")
 
-        # 检查具体数值（3位以上，降低阈值提高安全性）
+        # Check concrete numbers (>=3 digits)
         expected_numbers = re.findall(r"\d{3,}", expected)
         inject_numbers = re.findall(r"\d{3,}", inject_content)
 
@@ -509,7 +511,7 @@ class InjectsOptimizer:
             if num in expected_numbers:
                 raise ValueError(f"注入内容包含答案中的具体数值: {num}")
 
-        # 检查百分比
+        # Check percentages
         expected_percentages = re.findall(r"\d+%", expected)
         inject_percentages = re.findall(r"\d+%", inject_content)
 
@@ -519,14 +521,12 @@ class InjectsOptimizer:
 
         return True
 
-    # 已移除：格式类型检测（启发式）
-
-    # 已移除：格式/结构相关的启发式函数
-
-    # 已移除：结构/完整性/数值存在性/误差量级等启发式函数
+    # Removed: format-type detection (heuristics)
+    # Removed: format/structure-related heuristics
+    # Removed: structure/completeness/numeric-presence/magnitude heuristics
 
     def _analyze_previous_inject(self, previous_inject: str) -> Dict:
-        """分析之前的注入内容"""
+        """Analyze previous inject content."""
         if not previous_inject:
             return {}
 
@@ -543,18 +543,18 @@ class InjectsOptimizer:
         }
 
     def _combine_inject_components(self, components: List[str]) -> str:
-        """组合注入组件"""
+        """Combine inject components."""
         if not components:
             return "请仔细分析问题并给出准确结果"
 
-        # 去重并组合
-        unique_components = list(dict.fromkeys(components))  # 保持顺序的去重
+        # De-duplicate while preserving order
+        unique_components = list(dict.fromkeys(components))  # Ordered de-dup
         return "；".join(unique_components)
 
-    # 已移除：启发式 baseline 对比（语义模式由 _build_semantic_gradient 内部完成）
+    # Removed: heuristic baseline comparison (semantic mode handles this inside _build_semantic_gradient)
 
     def _get_momentum_strength(self) -> float:
-        """获取当前动量强度"""
+        """Get current momentum strength."""
         if not self.velocity.get("error_type"):
             return 0.0
 
@@ -563,7 +563,7 @@ class InjectsOptimizer:
         )
 
     def get_optimization_summary(self) -> Dict:
-        """获取优化总结"""
+        """Get an optimization summary."""
         if not self.failure_history:
             return {}
 

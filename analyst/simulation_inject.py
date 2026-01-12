@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 """
-SimulationInjector: 将 simulation-inject 的具体实现从 ExperimentCoordinator 中解耦，
-以独立类的方式提供单个case与批量case的智能注入优化能力（纯语义驱动）。
+SimulationInjector: decouple the simulation-inject implementation from ExperimentCoordinator.
+
+Provides an independent class for intelligent inject optimization for a single case or
+multiple cases (semantic-driven only).
 """
 
 from typing import Optional, Callable
@@ -39,12 +41,12 @@ class SimulationInjector(BaseAnalyzer):
         data_loader,
         cross_run_analysis_callback: Optional[Callable[..., bool]] = None,
     ):
-        # 调用父类初始化
+        # Initialize the parent class
         super().__init__(data_loader)
 
-        # SimulationInjector特有属性
+        # SimulationInjector-specific attributes
         self._benchmark_dir: Optional[Path] = None
-        # 可选：用于在缺失跨run汇总分析时触发生成
+        # Optional: callback used to generate cross-run summary when missing
         self._cross_run_analysis_cb = cross_run_analysis_callback
 
     # ===== Public API =====
@@ -59,7 +61,7 @@ class SimulationInjector(BaseAnalyzer):
         top_n: int = 5,
     ) -> bool:
         """
-        单样本作为批次语义优化的退化情形：以一个 case 运行批次优化。
+        Degenerate case of batch semantic optimization: run batch optimization for a single case.
         """
         return self._semantic_batch_optimize(
             case_ids=[str(case_id).lstrip("case_").lstrip("test_").zfill(3)],
@@ -81,7 +83,7 @@ class SimulationInjector(BaseAnalyzer):
         timeout_seconds: int = 500,
         top_n: int = 5,
     ) -> bool:
-        """批次语义优化：按阈值筛选case后，做跨case的聚合优化。"""
+        """Batch semantic optimization: filter cases by threshold, then run cross-case aggregation optimization."""
         import pandas as pd
 
         print(f"🚀 启动批次语义优化 (multi-case semantic batch)")
@@ -143,25 +145,25 @@ class SimulationInjector(BaseAnalyzer):
     def _prepare_enhanced_evaluate_context(
         self, benchmark_item: dict, case_result: dict, analysis_content: str
     ) -> dict:
-        """准备增强的评估上下文，包含完整的 benchmark 信息"""
+        """Prepare an enhanced evaluation context including full benchmark information."""
         evaluate_context = {
-            # 1. 保留所有 benchmark item 原始字段
+            # 1. Preserve all raw benchmark-item fields
             "benchmark_item": benchmark_item,
-            # 2. 预测结果信息
+            # 2. Predicted result info
             "predicted_result": case_result["last_result"],
             "predicted_execution_process": case_result.get("execution_log", ""),
-            # 3. 跨运行分析上下文
+            # 3. Cross-run analysis context
             "analysis_content": analysis_content,
-            # 4. 元数据信息
+            # 4. Metadata
             "evaluation_timestamp": datetime.now().isoformat(),
-            # 5. 结构化的期望结果信息
+            # 5. Structured expected-output info
             "expected_info": {
                 "raw_expected": benchmark_item.get(
                     "choice_answer",
                     benchmark_item.get("answer", benchmark_item.get("Answer", "")),
                 ),
             },
-            # 6. 优化相关信息（新增）
+            # 6. Optimization-related info
             "optimization_context": {
                 "current_inject": case_result.get("current_inject", ""),
                 "iteration": case_result.get("iteration", 0),
@@ -173,16 +175,16 @@ class SimulationInjector(BaseAnalyzer):
 
     # ===== Helpers =====
     def _find_case_specific_summary_file(self, analysis_dir, case_id):
-        """查找包含指定case_id的汇总分析文件"""
+        """Find a summary analysis file that contains the given case_id."""
         summary_files = list(analysis_dir.glob("cross_run_summary_cases_*.txt"))
         case_specific_files = []
 
         for file in summary_files:
             filename = file.name
             try:
-                # 提取cases部分: cross_run_summary_cases_{case_str}_{timestamp}.txt
+                # Extract cases segment: cross_run_summary_cases_{case_str}_{timestamp}.txt
                 case_part = filename.split("_cases_")[1].split("_")[0]
-                # 处理包含 "and_X_more" 的情况
+                # Handle "and_X_more" suffix
                 if "and" in case_part:
                     case_part = case_part.split("and")[0].rstrip("_")
 
@@ -190,11 +192,11 @@ class SimulationInjector(BaseAnalyzer):
                 if case_id in case_list:
                     case_specific_files.append(file)
             except Exception:
-                # 解析失败，跳过该文件
+                # Parse failure: skip this file
                 continue
 
         if case_specific_files:
-            # 选择最新的包含当前case_id的文件
+            # Pick the newest file that contains the current case_id
             latest_summary = max(case_specific_files, key=lambda f: f.stat().st_mtime)
             return latest_summary
 
@@ -217,7 +219,7 @@ class SimulationInjector(BaseAnalyzer):
                 except Exception as e:
                     print(f"⚠️ 读取汇总分析报告失败: {e}")
 
-        # 若无汇总、尝试通过回调生成
+        # If no summary exists, try generating via callback
         print("⚠️ 未找到跨run汇总分析报告，执行新的跨run分析...")
         if self._cross_run_analysis_cb:
             ok = self._cross_run_analysis_cb(
@@ -229,7 +231,7 @@ class SimulationInjector(BaseAnalyzer):
             if not ok:
                 print("错误: 跨run分析失败")
                 return ""
-            # 重试加载
+            # Retry loading
             if analysis_dir.exists():
                 latest_summary = self._find_case_specific_summary_file(
                     analysis_dir, case_id
@@ -252,7 +254,7 @@ class SimulationInjector(BaseAnalyzer):
 
         cmd = original_cmd.copy()
 
-        # 强制包含 answer 输出变量
+        # Force include answer output variable
         try:
             if "--output-variables" in cmd:
                 ov_idx = cmd.index("--output-variables")
@@ -303,14 +305,14 @@ class SimulationInjector(BaseAnalyzer):
             if not timed_out and result is not None:
                 print(f"⏎ 子进程退出码: {result.returncode}")
 
-        # 尝试从日志中提取结构化答案
+        # Try extracting a structured answer from the log
         answer = self._extract_answer_from_log(log_file)
         if answer is not None:
             if timed_out:
                 print("⚠️ 虽然命令超时，但已在日志中检测到完整答案，将其视为成功。")
             return answer
 
-        # 如果提取失败，报告错误
+        # If extraction failed, report errors
         if timed_out:
             print("⚠️ 命令超时且未在日志中找到可用答案")
         elif result is not None and result.returncode != 0:
@@ -332,7 +334,7 @@ class SimulationInjector(BaseAnalyzer):
         timeout_seconds: int,
         top_n: int = 5,
     ) -> bool:
-        # 参数与环境检查
+        # Parameter and environment validation
         print(
             f"📦 批次样本: {len(case_ids)} -> {', '.join(case_ids[:10])}{' ...' if len(case_ids)>10 else ''}"
         )
@@ -348,7 +350,7 @@ class SimulationInjector(BaseAnalyzer):
             print(f"错误: 变量 '${inject_var}' 在 agent '{entrypoint}' 中不存在")
             return False
 
-        # 确保simulation_logs目录存在
+        # Ensure simulation_logs directory exists
         simulation_logs_dir = self.experiment_path / "simulation_logs"
         simulation_logs_dir.mkdir(exist_ok=True)
 
@@ -361,7 +363,7 @@ class SimulationInjector(BaseAnalyzer):
             print("错误: 无法获取分析内容")
             return False
 
-        # 准备每个样本的基础信息（不执行baseline）
+        # Prepare base info for each sample (baseline is executed in the dedicated phase)
         cases = []
         for cid in case_ids:
             original_cmd = self._get_case_execution_command(cid)
@@ -391,7 +393,7 @@ class SimulationInjector(BaseAnalyzer):
             print("错误: 无可优化的case")
             return False
 
-        # 统一迭代：第-1轮为baseline，第0轮开始为注入优化
+        # Unified iteration: iteration -1 is baseline; iteration 0 starts injection optimization
         inject_history: list[str] = []
         plateau = 0
         patience = 5
@@ -415,7 +417,7 @@ class SimulationInjector(BaseAnalyzer):
             print(f"🔧 为案例 {c['case_num']} 评估语义梯度（增强版）...")
             print(f"   使用完整跨run分析上下文 ({len(full_analysis_content)} 字符)")
 
-            # 准备增强评估上下文
+            # Prepare enhanced evaluation context
             case_result_info = {"last_result": result}
             evaluate_context = self._prepare_enhanced_evaluate_context(
                 c["benchmark_item"], case_result_info, full_analysis_content
@@ -460,10 +462,10 @@ class SimulationInjector(BaseAnalyzer):
                 print("错误: 无法从梯度聚合出有效注入（无候选/无动作），中止优化。")
                 return False
 
-            # 检查是否与历史重复（双重保险）
+            # Check repetition against history (double safety)
             if agg_inject in inject_history:
                 print(f"⚠️ 聚合结果与历史重复，尝试增加多样性...")
-                # 尝试使用更多候选
+                # Try using more candidates
                 agg_inject_alt = aggregate_gradients(
                     current_gradients, top_n=min(top_n * 2, 5), history=inject_history
                 )
@@ -473,9 +475,9 @@ class SimulationInjector(BaseAnalyzer):
                     and agg_inject_alt not in inject_history
                 ):
                     agg_inject = agg_inject_alt
-                    print(f"✅ 采用替代聚合策略")
+                    print("✅ Using an alternative aggregation strategy")
                 else:
-                    print(f"⚠️ 无法避免重复，继续使用当前结果（可能导致早停）")
+                    print("⚠️ Unable to avoid repetition; keep current result (may trigger early stopping)")
 
             inject_history.append(agg_inject)
             print(
@@ -488,15 +490,15 @@ class SimulationInjector(BaseAnalyzer):
             # Step 3: Loss calculation & Backward pass - evaluate results and calculate new gradients
             new_gradients = []
             for c in valid_cases:
-                # 关键修复：每次迭代都重新计算所有样本的梯度
-                # 即使case已完成，也需要基于当前注入内容重新评估梯度
+                # Critical fix: recompute gradients for all samples every iteration.
+                # Even if a case is already done, re-evaluate under the current inject.
 
-                # 智能执行策略：平衡性能与准确性
+                # Smart execution strategy: balance performance and accuracy
                 skip_execution = False
 
-                # 性能优化：对于已完成且得分很高的cases，可以考虑跳过执行
+                # Performance optimization: for done cases with high scores, consider skipping execution
                 if c["done"] and c.get("last_score", 0) > 0.9 and it > 1:
-                    # 高置信度的完成案例，降低执行频率
+                    # High-confidence done case: reduce execution frequency
                     skip_execution = it % 2 == 0  # 偶数轮跳过执行
                     if skip_execution:
                         print(
@@ -504,7 +506,7 @@ class SimulationInjector(BaseAnalyzer):
                         )
 
                 if c["done"] and not skip_execution:
-                    # 已完成但需要重新执行以获得当前参数下的结果
+                    # Done but needs re-execution to get results under current parameters
                     print(f"🔧 案例 {c['case_num']} 已完成，重新执行以更新梯度...")
                     res = self._execute_with_inject(
                         original_cmd=c["original_cmd"],
@@ -521,10 +523,10 @@ class SimulationInjector(BaseAnalyzer):
                         res = c["last_result"]
                         print(f"⚠️ 重新执行失败，使用历史结果")
                 elif c["done"] and skip_execution:
-                    # 使用上次的执行结果，但重新计算梯度
+                    # Reuse last execution result but recompute gradient
                     res = c["last_result"]
                 else:
-                    # 未完成的cases，必须执行
+                    # Not done: must execute
                     res = self._execute_with_inject(
                         original_cmd=c["original_cmd"],
                         inject_content=agg_inject,
@@ -535,16 +537,16 @@ class SimulationInjector(BaseAnalyzer):
                         timeout_seconds=timeout_seconds,
                     )
                     if res is None:
-                        # 执行失败时使用上次结果重新评估梯度
+                        # On execution failure, reuse last result to re-evaluate gradient
                         res = c["last_result"]
                         print(
                             f"⚠️ 案例 {c['case_num']} 执行失败，使用上次结果重新评估梯度"
                         )
                     else:
-                        # 更新执行结果
+                        # Update execution result
                         c["last_result"] = res
 
-                # 重要：无论case状态如何，都要重新计算梯度
+                # Important: recompute gradients regardless of case status
                 print(f"🔧 为案例 {c['case_num']} 重新计算梯度（基于当前注入参数）...")
                 current_analysis = "" if it > 0 else full_analysis_content
                 if it == 0:
@@ -552,14 +554,14 @@ class SimulationInjector(BaseAnalyzer):
                 else:
                     print(f"   使用简化上下文，专注当前执行结果评估")
 
-                # 准备增强评估上下文，包含当前注入内容信息
+                # Prepare enhanced evaluation context with current inject info
                 case_result_info = {
                     "last_result": res,
-                    "current_inject": agg_inject,  # 添加当前注入信息
+                    "current_inject": agg_inject,  # Current inject info
                     "iteration": it,
                     "inject_history": (
                         inject_history[:-1] if inject_history else []
-                    ),  # 历史（不包含当前）
+                    ),  # History (excluding current)
                 }
                 evaluate_context = self._prepare_enhanced_evaluate_context(
                     c["benchmark_item"], case_result_info, current_analysis
@@ -582,7 +584,7 @@ class SimulationInjector(BaseAnalyzer):
                     )
                     return False
 
-                # 检查是否新完成
+                # Check whether it newly becomes done
                 if not c["done"] and self._compare_result_with_benchmark(
                     res, c["expected"]
                 ):
@@ -704,10 +706,10 @@ class SimulationInjector(BaseAnalyzer):
         cmd = original_cmd.copy()
         cmd.extend([f"--{inject_var}", inject_content])
 
-        # 关键修复：必须使用支持injects变量的agent
+        # Critical fix: must use an agent that supports the injects variable
         target_agent = entrypoint if entrypoint else "my_agent"
 
-        # 验证目标agent是否支持injects变量
+        # Validate that the target agent supports the injects variable
         if not self._validate_inject_var_in_agent(target_agent, inject_var):
             print(
                 f"⚠️ Agent '{target_agent}' 不支持 {inject_var} 变量，尝试使用 my_agent"
@@ -717,7 +719,7 @@ class SimulationInjector(BaseAnalyzer):
                 print(f"❌ 无法找到支持 {inject_var} 变量的agent")
                 return None
 
-        # 替换agent参数
+        # Replace --agent argument
         for i, arg in enumerate(cmd):
             if arg == "--agent":
                 if i + 1 < len(cmd):
@@ -728,7 +730,7 @@ class SimulationInjector(BaseAnalyzer):
         else:
             print("⚠️ 在inject命令中未找到 --agent 参数")
 
-        # 强制包含 answer 输出变量
+        # Force include answer output variable
         try:
             if "--output-variables" in cmd:
                 ov_idx = cmd.index("--output-variables")
@@ -937,7 +939,7 @@ class SimulationInjector(BaseAnalyzer):
             print(f"⚠️ 保存优化总结失败: {e}")
 
     def _load_knowledge_for_inject(self, knowledge_path: Optional[str]) -> str:
-        """使用基类的知识加载方法"""
+        """Load knowledge using BaseAnalyzer helper."""
         return self._load_knowledge(knowledge_path)
 
     def _get_case_execution_command(self, case_num) -> Optional[list]:
@@ -945,7 +947,7 @@ class SimulationInjector(BaseAnalyzer):
             import json as _json
             import shlex
 
-            # 查找最新的run目录
+            # Find the latest run directory
             run_dirs = sorted(
                 [
                     d
@@ -958,16 +960,16 @@ class SimulationInjector(BaseAnalyzer):
 
             run_dir = run_dirs[0]
 
-            # 优先查找 cmds/case_XXX.sh 文件
+            # Prefer cmds/case_XXX.sh
             case_formatted = str(case_num).zfill(3)  # 确保是3位数格式
             cmd_sh_file = run_dir / "cmds" / f"case_{case_formatted}.sh"
 
             if cmd_sh_file.exists():
-                # 读取shell脚本并解析dolphin命令
+                # Read the shell script and parse the dolphin command
                 with open(cmd_sh_file, "r", encoding="utf-8") as f:
                     content = f.read()
 
-                # 查找dolphin命令行（包含多行字符串）
+                # Find the dolphin command (may contain multi-line strings)
                 lines = content.split("\n")
                 cmd_parts = []
                 in_dolphin_cmd = False
@@ -977,22 +979,22 @@ class SimulationInjector(BaseAnalyzer):
                 for line in lines:
                     stripped = line.strip()
 
-                    # 检查是否开始dolphin命令
+                    # Check whether dolphin command starts
                     if stripped.endswith("/bin/dolphin \\"):
                         in_dolphin_cmd = True
                         cmd_parts.append(stripped.rstrip(" \\"))
                         continue
 
-                    # 如果在dolphin命令中
+                    # If we are inside the dolphin command
                     if in_dolphin_cmd:
-                        # 检查是否开始多行字符串
+                        # Check whether a multi-line string starts
                         if not in_multiline_string and (
                             stripped.startswith("'") or stripped.startswith('"')
                         ):
                             if stripped.startswith("'"):
                                 string_delimiter = "'"
                                 in_multiline_string = True
-                                # 检查是否在同一行结束
+                                # Check whether it ends on the same line
                                 if stripped.endswith("' \\") or (
                                     stripped.endswith("'")
                                     and not stripped.endswith("' \\")
@@ -1007,7 +1009,7 @@ class SimulationInjector(BaseAnalyzer):
                                 ):
                                     in_multiline_string = False
 
-                        # 如果在多行字符串中
+                        # If we are inside a multi-line string
                         elif in_multiline_string:
                             if stripped.endswith(
                                 string_delimiter + " \\"
@@ -1015,17 +1017,17 @@ class SimulationInjector(BaseAnalyzer):
                                 in_multiline_string = False
                                 string_delimiter = None
 
-                        # 添加当前行到命令部分
+                        # Append current line to command parts
                         if stripped.endswith(" \\"):
                             cmd_parts.append(stripped.rstrip(" \\"))
                         else:
                             cmd_parts.append(stripped)
-                            # 如果不是多行字符串，结束命令收集
+                            # If not in a multi-line string, stop collecting
                             if not in_multiline_string:
                                 break
 
                 if cmd_parts:
-                    # 使用专门的bash脚本解析逻辑
+                    # Use the dedicated bash parsing logic
                     try:
                         parsed_cmd = self._parse_bash_command_with_multiline_strings(
                             cmd_parts
@@ -1034,7 +1036,7 @@ class SimulationInjector(BaseAnalyzer):
                             print(f"🔍 bash解析出的命令参数数量: {len(parsed_cmd)}")
                             print(f"🔍 前5个参数: {parsed_cmd[:5]}")
 
-                            # 验证关键参数
+                            # Validate critical parameters
                             for i, arg in enumerate(parsed_cmd):
                                 if arg == "--agent" and i + 1 < len(parsed_cmd):
                                     print(
@@ -1042,7 +1044,7 @@ class SimulationInjector(BaseAnalyzer):
                                     )
                                     break
 
-                            # 检查choice_question
+                            # Check choice_question
                             for i, arg in enumerate(parsed_cmd):
                                 if arg == "--choice_question" and i + 1 < len(
                                     parsed_cmd
@@ -1063,7 +1065,7 @@ class SimulationInjector(BaseAnalyzer):
                     except Exception as e:
                         print(f"⚠️ bash解析失败: {e}，回退到传统方法")
 
-                    # 回退：尝试shlex解析
+                    # Fallback: try shlex parsing
                     try:
                         full_cmd = " ".join(cmd_parts)
                         parsed_cmd = shlex.split(full_cmd, posix=True)
@@ -1077,10 +1079,10 @@ class SimulationInjector(BaseAnalyzer):
                     except Exception as e:
                         print(f"⚠️ shlex解析失败: {e}，回退到手动解析")
 
-                    # 方法2: 回退到改进的手动解析（保持多行结构）
+                    # Method 2: fall back to improved manual parsing (preserve multi-line structure)
                     parsed_cmd = []
 
-                    # 首先确保包含dolphin可执行文件路径
+                    # Ensure the dolphin executable path is included first
                     dolphin_path = None
                     for part in cmd_parts:
                         if "/bin/dolphin" in part:
@@ -1090,7 +1092,7 @@ class SimulationInjector(BaseAnalyzer):
                     if dolphin_path:
                         parsed_cmd.append(dolphin_path)
 
-                    # 然后解析参数
+                    # Then parse arguments
                     i = 0
                     while i < len(cmd_parts):
                         part = cmd_parts[i].strip()
@@ -1098,28 +1100,28 @@ class SimulationInjector(BaseAnalyzer):
                             i += 1
                             continue
 
-                        # 跳过已经处理的dolphin路径
+                        # Skip already handled dolphin path
                         if "/bin/dolphin" in part:
                             i += 1
                             continue
 
-                        # 检查是否是参数开始
+                        # Check whether this starts a new argument
                         if part.startswith("--"):
                             parsed_cmd.append(part)
                             i += 1
-                            # 收集参数值
+                            # Collect argument value
                             if i < len(cmd_parts):
                                 value_part = cmd_parts[i].strip()
 
-                                # 特殊处理带引号的多行值
+                                # Special handling for quoted multi-line values
                                 if value_part.startswith("'"):
-                                    # 多行字符串值，需要收集直到匹配的引号
+                                    # Multi-line string: collect until the matching quote
                                     value_lines = [value_part]
                                     if (
                                         not value_part.endswith("'")
                                         or value_part.count("'") == 1
                                     ):
-                                        # 需要收集更多行
+                                        # Need to collect more lines
                                         i += 1
                                         while i < len(cmd_parts):
                                             next_line = cmd_parts[i].strip()
@@ -1128,7 +1130,7 @@ class SimulationInjector(BaseAnalyzer):
                                                 break
                                             i += 1
 
-                                    # 重建完整值并移除外层引号
+                                    # Rebuild full value and strip outer quotes
                                     full_value = "\n".join(value_lines)
                                     if full_value.startswith(
                                         "'"
@@ -1139,7 +1141,7 @@ class SimulationInjector(BaseAnalyzer):
                                     parsed_cmd.append(value_part)
                                 i += 1
                         else:
-                            # 可能是延续的参数值
+                            # Might be a continuation of the previous argument value
                             if parsed_cmd and not part.startswith("--"):
                                 parsed_cmd.append(part)
                             i += 1
@@ -1148,7 +1150,7 @@ class SimulationInjector(BaseAnalyzer):
                         print(f"🔍 手动解析出的命令参数数量: {len(parsed_cmd)}")
                         print(f"🔍 前5个参数: {parsed_cmd[:5]}")
 
-                        # 验证关键参数
+                        # Validate critical parameters
                         for i, arg in enumerate(parsed_cmd):
                             if arg == "--agent" and i + 1 < len(parsed_cmd):
                                 print(
@@ -1156,7 +1158,7 @@ class SimulationInjector(BaseAnalyzer):
                                 )
                                 break
 
-                        # 检查choice_question
+                        # Check choice_question
                         for i, arg in enumerate(parsed_cmd):
                             if arg == "--choice_question" and i + 1 < len(parsed_cmd):
                                 choice_q_value = parsed_cmd[i + 1]
@@ -1171,26 +1173,26 @@ class SimulationInjector(BaseAnalyzer):
 
                         return parsed_cmd
                     else:
-                        # 如果解析失败，回退到使用shell脚本
+                        # If parsing fails, fall back to using the shell script
                         print(
                             f"⚠️ 无法解析shell脚本中的命令，使用原始脚本: {cmd_sh_file}"
                         )
                         return ["bash", str(cmd_sh_file)]
 
-            # 兜底：查找 cmd.json 文件
+            # Last resort: find cmd.json
             cmd_file = run_dir / "cmd.json"
             if cmd_file.exists():
                 with open(cmd_file, "r", encoding="utf-8") as f:
                     cmd_data = _json.load(f)
 
-                # 查找指定case的命令
+                # Find the command for the specified case
                 case_key_variants = [f"test_{case_num}", f"case_{case_num}", case_num]
                 for key in case_key_variants:
                     cmd = cmd_data.get(key)
                     if cmd:
                         return cmd
 
-                # 兜底：返回全局命令
+                # Last resort: return the global command
                 return cmd_data.get("default")
 
             return None
@@ -1248,21 +1250,21 @@ class SimulationInjector(BaseAnalyzer):
         专门解析bash脚本中的多行字符串命令
         处理形如 --choice_question '多行\n内容' 的情况
         """
-        # 将所有行重新组合，保持原始的换行和空格
+        # Recombine all lines while preserving original newlines and spacing
         full_text = "\n".join(cmd_parts)
 
-        # 手动分析参数结构
+        # Manually parse argument structure
         result = []
         i = 0
         lines = cmd_parts
 
-        # 首先找到dolphin可执行文件
+        # First locate the dolphin executable
         for line in lines:
             if "/bin/dolphin" in line:
                 result.append(line.strip())
                 break
 
-        # 然后逐行解析参数
+        # Then parse arguments line by line
         current_param = None
         current_value = ""
         in_multiline_string = False
@@ -1271,36 +1273,36 @@ class SimulationInjector(BaseAnalyzer):
         for line in lines:
             line_stripped = line.strip()
 
-            # 跳过dolphin可执行文件行
+            # Skip dolphin executable line
             if "/bin/dolphin" in line:
                 continue
 
-            # 检查是否是新参数
+            # Check whether this starts a new argument
             if line_stripped.startswith("--") and not in_multiline_string:
-                # 保存之前的参数值
+                # Save previous argument value
                 if current_param is not None:
                     if current_value.strip():
                         result.append(current_value.strip())
                     current_value = ""
 
-                # 开始新参数
+                # Start a new argument
                 current_param = line_stripped
                 result.append(current_param)
                 continue
 
-            # 处理参数值
+            # Handle argument values
             if current_param is not None:
-                # 检查是否开始多行字符串
+                # Check whether a multi-line string starts
                 if not in_multiline_string and (
                     "'" in line_stripped or '"' in line_stripped
                 ):
-                    # 检测字符串开始
+                    # Detect string start
                     if line_stripped.startswith("'"):
                         in_multiline_string = True
                         string_delimiter = "'"
                         current_value = line_stripped[1:]  # 移除开头的引号
 
-                        # 检查是否在同一行结束
+                        # Check whether it ends on the same line
                         if current_value.endswith("'") and len(current_value) > 0:
                             current_value = current_value[:-1]  # 移除结尾引号
                             in_multiline_string = False
@@ -1317,28 +1319,28 @@ class SimulationInjector(BaseAnalyzer):
                     else:
                         current_value = line_stripped
                 elif in_multiline_string:
-                    # 继续多行字符串
+                    # Continue multi-line string
                     if line_stripped.endswith(string_delimiter + " \\"):
-                        # 字符串结束但有续行符，移除续行符和引号
+                        # String ends with line continuation: strip continuation and quote
                         current_value += "\n" + line_stripped[:-3]  # 移除 ' \
                         in_multiline_string = False
                         string_delimiter = None
                     elif line_stripped.endswith(string_delimiter):
-                        # 字符串结束
+                        # String ends
                         current_value += "\n" + line_stripped[:-1]  # 移除结尾引号
                         in_multiline_string = False
                         string_delimiter = None
                     else:
-                        # 继续多行
+                        # Continue multi-line
                         current_value += "\n" + line_stripped
                 else:
-                    # 普通参数值（可能有续行符）
+                    # Normal argument value (may have line continuation)
                     if line_stripped.endswith(" \\"):
                         current_value = line_stripped[:-2].strip()  # 移除续行符
                     else:
                         current_value = line_stripped
 
-        # 保存最后一个参数值
+        # Save the last argument value
         if current_param is not None and current_value.strip():
             result.append(current_value.strip())
 

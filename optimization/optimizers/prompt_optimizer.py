@@ -1,58 +1,58 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PromptOptimizer - Agent Prompt 源码优化器
+PromptOptimizer - Agent Prompt source optimizer
 
-核心思想：
-直接优化 Agent 的 .dph 源文件，生成改进版本。
+Core idea:
+Directly optimize an agent's .dph source file and generate improved variants.
 
-与 SimInjectOptimizer 的区别：
-- SimInject: 运行时注入，临时生效，不修改源码
-- PromptOptimizer: 设计时优化，修改源码，永久改进
+Differences from SimInjectOptimizer:
+- SimInject: runtime injection, temporary effect, does not modify source code
+- PromptOptimizer: design-time optimization, modifies source code for persistent improvement
 
-工作流程：
-1. 读取原始 .dph 文件
-2. 使用 PromptModifierGenerator 生成改进版本
-3. 使用 TwoPhaseEvaluator 评估（先快速筛选，再精确评估）
-4. 使用 SuccessiveHalvingSelector 逐步淘汰
-5. 返回最佳版本（可选择是否替换原文件）
+Workflow:
+1. Read the original .dph file
+2. Generate improved variants via PromptModifierGenerator
+3. Evaluate via TwoPhaseEvaluator (fast filtering, then accurate evaluation)
+4. Gradually eliminate candidates via SuccessiveHalvingSelector
+5. Return the best variant (optionally replace the original file)
 
-安全机制：
-- 作用域限制：默认只修改 system 部分
-- 答案脱敏：禁止泄露测试答案
-- 自动备份：修改前自动备份原文件
-- 格式验证：确保生成有效的 .dph 文件
+Safety:
+- Scope limiting: only modify the system section by default
+- Answer redaction: forbid leaking test answers
+- Auto backup: back up the original file before modification
+- Format validation: ensure the generated .dph file is valid
 """
 from pathlib import Path
 from typing import Any
 from datetime import datetime
 import shutil
 
-from experiments.optimization.engine import EvolutionOptimizationEngine
-from experiments.optimization.generators.prompt_modifier_generator import (
+from optimization.engine import EvolutionOptimizationEngine
+from optimization.generators.prompt_modifier_generator import (
     PromptModifierGenerator,
     PromptModificationConstraint
 )
-from experiments.optimization.evaluators.approximate_evaluator import ApproximateEvaluator
-from experiments.optimization.evaluators.two_phase_evaluator import TwoPhaseEvaluator
-from experiments.optimization.evaluators.semantic_judge_evaluator import SemanticJudgeEvaluator
-from experiments.optimization.selectors.successive_halving_selector import SuccessiveHalvingSelector
-from experiments.optimization.controllers.budget_controller import (
+from optimization.evaluators.approximate_evaluator import ApproximateEvaluator
+from optimization.evaluators.two_phase_evaluator import TwoPhaseEvaluator
+from optimization.evaluators.semantic_judge_evaluator import SemanticJudgeEvaluator
+from optimization.selectors.successive_halving_selector import SuccessiveHalvingSelector
+from optimization.controllers.budget_controller import (
     BudgetController,
     EarlyStoppingController
 )
-from experiments.optimization.types import Budget, OptimizationResult
+from optimization.types import Budget, OptimizationResult
 
 
 class PromptOptimizer(EvolutionOptimizationEngine):
     """
-    Agent Prompt 源码优化器
+    Agent Prompt source optimizer.
 
-    基于演化优化框架，组合以下组件：
-    - Generator: PromptModifierGenerator（生成 prompt 变体）
-    - Evaluator: TwoPhaseEvaluator（两阶段评估，成本优化）
-    - Selector: SuccessiveHalvingSelector（逐步淘汰）
-    - Controller: EarlyStoppingController（早停控制）
+    Based on the evolution optimization framework, it composes:
+    - Generator: PromptModifierGenerator (generates prompt variants)
+    - Evaluator: TwoPhaseEvaluator (two-phase evaluation to reduce cost)
+    - Selector: SuccessiveHalvingSelector (successive elimination)
+    - Controller: EarlyStoppingController (early stopping)
     """
 
     def __init__(
@@ -67,15 +67,15 @@ class PromptOptimizer(EvolutionOptimizationEngine):
     ):
         """
         Args:
-            llm_client: LLM 客户端（用于生成 prompt 变体）
-            semantic_judge: SemanticJudge 实例（用于精确评估）
-            target_section: 优化目标部分（'system', 'tools', 'all'）
-            initial_size: 初始候选数量
-            use_two_phase: 是否使用两阶段评估（成本优化）
-            patience: 早停的耐心值
-            min_improvement: 最小改进阈值
+            llm_client: LLM client used to generate prompt variants.
+            semantic_judge: SemanticJudge instance used for accurate evaluation.
+            target_section: Target section to optimize ('system', 'tools', 'all').
+            initial_size: Initial candidate count.
+            use_two_phase: Whether to use two-phase evaluation for cost reduction.
+            patience: Early-stopping patience.
+            min_improvement: Minimum improvement threshold.
         """
-        # 创建组件
+        # Create components
         generator = PromptModifierGenerator(
             llm_client=llm_client,
             initial_size=initial_size,
@@ -91,23 +91,23 @@ class PromptOptimizer(EvolutionOptimizationEngine):
             )
         )
 
-        # 创建评估器
+        # Create evaluator
         if use_two_phase and semantic_judge:
-            # 两阶段评估：先快速筛选，再精确评估
+            # Two-phase evaluation: fast filtering, then accurate evaluation
             phase1 = ApproximateEvaluator()
             phase2 = SemanticJudgeEvaluator(semantic_judge)
             evaluator = TwoPhaseEvaluator(phase1, phase2)
         elif semantic_judge:
-            # 只使用精确评估
+            # Use accurate evaluation only
             evaluator = SemanticJudgeEvaluator(semantic_judge)
         else:
-            # 只使用近似评估
+            # Use approximate evaluation only
             evaluator = ApproximateEvaluator()
 
-        # 创建选择器
+        # Create selector
         selector = SuccessiveHalvingSelector()
 
-        # 创建控制器
+        # Create controller
         controller = EarlyStoppingController(
             patience=patience,
             min_improvement=min_improvement
@@ -133,19 +133,19 @@ class PromptOptimizer(EvolutionOptimizationEngine):
         aggressive: bool = False
     ) -> 'PromptOptimizer':
         """
-        创建默认配置的 PromptOptimizer
+        Create a PromptOptimizer with a default configuration.
 
         Args:
-            llm_client: LLM 客户端
-            semantic_judge: SemanticJudge 实例（可选）
-            target_section: 优化目标部分
-            aggressive: 是否使用激进的优化策略
+            llm_client: LLM client.
+            semantic_judge: Optional SemanticJudge instance.
+            target_section: Target section to optimize.
+            aggressive: Whether to use an aggressive optimization strategy.
 
         Returns:
-            配置好的 PromptOptimizer
+            A configured PromptOptimizer.
         """
         if aggressive:
-            # 激进策略：更多初始候选，更严格的淘汰
+            # Aggressive strategy: more initial candidates and stricter elimination
             return cls(
                 llm_client=llm_client,
                 semantic_judge=semantic_judge,
@@ -156,7 +156,7 @@ class PromptOptimizer(EvolutionOptimizationEngine):
                 min_improvement=0.1
             )
         else:
-            # 保守策略：少量候选，耐心优化
+            # Conservative strategy: fewer candidates and more patience
             return cls(
                 llm_client=llm_client,
                 semantic_judge=semantic_judge,
@@ -176,35 +176,35 @@ class PromptOptimizer(EvolutionOptimizationEngine):
         replace: bool = False
     ) -> OptimizationResult:
         """
-        优化 agent 文件
+        Optimize an agent file.
 
         Args:
-            agent_path: Agent 文件路径
-            context: 优化上下文（failed_cases, knowledge, etc.）
-            budget: 预算
-            backup: 是否备份原文件
-            replace: 是否用最佳版本替换原文件
+            agent_path: Path to the agent file.
+            context: Optimization context (failed_cases, knowledge, etc.).
+            budget: Optimization budget.
+            backup: Whether to back up the original file.
+            replace: Whether to replace the original file with the best variant.
 
         Returns:
-            优化结果
+            Optimization result.
         """
         agent_path = Path(agent_path)
 
         if not agent_path.exists():
             raise FileNotFoundError(f"Agent 文件不存在: {agent_path}")
 
-        # 1. 读取原始文件
+        # 1. Read original file
         original_content = agent_path.read_text(encoding='utf-8')
 
-        # 2. 备份原文件
+        # 2. Back up original file
         if backup:
             backup_path = self._backup_file(agent_path)
             print(f"✓ 已备份原文件: {backup_path}")
 
-        # 3. 补充上下文
+        # 3. Enrich context
         context['agent_path'] = str(agent_path)
 
-        # 4. 运行优化
+        # 4. Run optimization
         print(f"开始优化 {agent_path.name} 的 {self.target_section} 部分...")
         result = self.optimize(
             target=original_content,
@@ -212,7 +212,7 @@ class PromptOptimizer(EvolutionOptimizationEngine):
             budget=budget
         )
 
-        # 5. 如果需要，替换原文件
+        # 5. Optionally replace the original file
         if replace and result.best_candidate:
             print(f"\n替换原文件...")
             agent_path.write_text(result.best_candidate.content, encoding='utf-8')
@@ -223,7 +223,7 @@ class PromptOptimizer(EvolutionOptimizationEngine):
         return result
 
     def _backup_file(self, file_path: Path) -> Path:
-        """备份文件"""
+        """Back up a file."""
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         backup_dir = file_path.parent / '.backup'
         backup_dir.mkdir(exist_ok=True)
@@ -237,9 +237,9 @@ class PromptOptimizer(EvolutionOptimizationEngine):
 
 class QuickPromptOptimizer(PromptOptimizer):
     """
-    快速 Prompt 优化器
+    Quick prompt optimizer.
 
-    适用于快速验证优化想法，牺牲一些质量换取速度。
+    Useful for quickly validating optimization ideas, trading quality for speed.
     """
 
     def __init__(self, llm_client: Any, semantic_judge: Any = None):
@@ -247,18 +247,18 @@ class QuickPromptOptimizer(PromptOptimizer):
             llm_client=llm_client,
             semantic_judge=semantic_judge,
             target_section='system',
-            initial_size=3,      # 只生成 3 个初始候选
-            use_two_phase=True,  # 使用两阶段评估节省成本
-            patience=1,          # 耐心值为 1，快速收敛
-            min_improvement=0.1  # 较高的改进阈值
+            initial_size=3,      # Generate only 3 initial candidates
+            use_two_phase=True,  # Use two-phase evaluation to save cost
+            patience=1,          # Small patience for fast convergence
+            min_improvement=0.1  # Higher improvement threshold
         )
 
 
 class DeepPromptOptimizer(PromptOptimizer):
     """
-    深度 Prompt 优化器
+    Deep prompt optimizer.
 
-    适用于系统性优化，追求最佳质量。
+    Suitable for systematic optimization when best quality is desired.
     """
 
     def __init__(self, llm_client: Any, semantic_judge: Any):
@@ -266,10 +266,10 @@ class DeepPromptOptimizer(PromptOptimizer):
             llm_client=llm_client,
             semantic_judge=semantic_judge,
             target_section='system',
-            initial_size=10,     # 更多初始候选
-            use_two_phase=True,  # 使用两阶段评估
-            patience=5,          # 更大的耐心值
-            min_improvement=0.02 # 更小的改进阈值（更严格的收敛）
+            initial_size=10,     # More initial candidates
+            use_two_phase=True,  # Use two-phase evaluation
+            patience=5,          # Larger patience
+            min_improvement=0.02 # Smaller improvement threshold (stricter convergence)
         )
 
 
@@ -285,21 +285,21 @@ def optimize_agent_file(
     replace: bool = False
 ) -> OptimizationResult:
     """
-    便捷函数：优化 Agent 文件
+    Convenience helper to optimize an agent file.
 
     Args:
-        agent_path: Agent 文件路径
-        llm_client: LLM 客户端
-        semantic_judge: SemanticJudge 实例
-        failed_cases: 失败的测试用例
-        knowledge: 业务知识
-        budget: 优化预算
-        target_section: 优化目标部分
-        backup: 是否备份
-        replace: 是否替换原文件
+        agent_path: Path to the agent file.
+        llm_client: LLM client.
+        semantic_judge: SemanticJudge instance.
+        failed_cases: Failed test cases.
+        knowledge: Domain knowledge.
+        budget: Optimization budget.
+        target_section: Target section to optimize.
+        backup: Whether to back up the original file.
+        replace: Whether to replace the original file.
 
     Returns:
-        优化结果
+        Optimization result.
     """
     optimizer = PromptOptimizer.create_default(
         llm_client=llm_client,
@@ -310,10 +310,10 @@ def optimize_agent_file(
     context = {
         'failed_cases': failed_cases or [],
         'knowledge': knowledge,
-        'error_types': []  # 可以从 failed_cases 中提取
+        'error_types': []  # Can be extracted from failed_cases
     }
 
-    # 从 failed_cases 提取错误类型
+    # Extract error types from failed_cases
     if failed_cases:
         error_types = set()
         for case in failed_cases:

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SimInject Optimizer 使用示例
+SimInject Optimizer usage examples.
 
-演示如何使用统一优化框架进行 sim-inject 优化。
+Demonstrates how to use the unified optimization framework for sim-inject optimization.
 """
 import sys
 from pathlib import Path
@@ -19,23 +19,23 @@ from optimization import (
 
 
 def example_1_basic_usage():
-    """示例1: 基本使用方式"""
+    """Example 1: basic usage."""
     print("=" * 60)
     print("示例1: SimInjectOptimizer 基本使用")
     print("=" * 60)
 
-    # 注意：这是一个演示示例，实际使用需要提供真实的 SemanticJudge 实例
+    # NOTE: this is a demo; real usage requires a real SemanticJudge instance
     # from experiments.analyst.semantic_judge import SemanticJudge
     # semantic_judge = SemanticJudge(data_loader=your_data_loader)
 
     print("""
-    # 1. 创建优化器
+    # 1. Create optimizer
     optimizer = SimInjectOptimizer.create_default(
         semantic_judge=semantic_judge,
         inject_var='$injects'
     )
 
-    # 2. 准备上下文
+    # 2. Prepare context
     context = {
         'agent_path': '/path/to/agent.dph',
         'analysis_content': 'cross-run failure analysis...',
@@ -44,17 +44,17 @@ def example_1_basic_usage():
         'knowledge': 'business knowledge'
     }
 
-    # 3. 设置预算
+    # 3. Set budget
     budget = Budget(max_iters=5, max_seconds=300)
 
-    # 4. 运行优化
+    # 4. Run optimization
     result = optimizer.optimize(
         target=None,
         context=context,
         budget=budget
     )
 
-    # 5. 查看结果
+    # 5. Inspect results
     if result.best_candidate:
         print(f"最佳注入: {result.best_candidate.content}")
         print(f"最佳得分: {result.best_score}")
@@ -63,26 +63,26 @@ def example_1_basic_usage():
 
 
 def example_2_custom_configuration():
-    """示例2: 自定义配置"""
+    """Example 2: custom configuration."""
     print("\n" + "=" * 60)
     print("示例2: 自定义优化器配置")
     print("=" * 60)
 
     print("""
-    # 使用自定义参数创建优化器
+    # Create an optimizer with custom parameters
     optimizer = SimInjectOptimizer(
         semantic_judge=semantic_judge,
-        inject_var='$custom_injects',  # 自定义变量名
-        top_k=5,                        # 每轮保留5个候选
-        patience=3,                     # 早停容忍度为3轮
-        min_improvement=0.02            # 最小改进阈值为0.02
+        inject_var='$custom_injects',  # Custom variable name
+        top_k=5,                        # Keep 5 candidates per round
+        patience=3,                     # Early-stopping patience = 3
+        min_improvement=0.02            # Minimum improvement threshold = 0.02
     )
 
-    # 设置更详细的预算
+    # Set a more detailed budget
     budget = Budget(
-        max_iters=10,        # 最多10轮迭代
-        max_seconds=600,     # 最多10分钟
-        max_tokens=100000    # Token预算
+        max_iters=10,        # Up to 10 iterations
+        max_seconds=600,     # Up to 10 minutes
+        max_tokens=100000    # Token budget
     )
 
     result = optimizer.optimize(target=None, context=context, budget=budget)
@@ -90,26 +90,26 @@ def example_2_custom_configuration():
 
 
 def example_3_using_registry():
-    """示例3: 使用组件注册表"""
+    """Example 3: using the component registry."""
     print("\n" + "=" * 60)
     print("示例3: 使用组件注册表")
     print("=" * 60)
 
     registry = get_registry()
 
-    # 列出所有可用组件
+    # List all available components
     components = registry.list_components()
     print("\n可用组件:")
     for comp_type, names in components.items():
         print(f"  {comp_type}: {', '.join(names)}")
 
     print("""
-    # 通过注册表创建组件
+    # Create components via the registry
     generator = registry.create_generator('sim_inject', inject_var='$injects', initial_size=5)
     selector = registry.create_selector('topk', k=3)
     controller = registry.create_controller('early_stopping', patience=2)
 
-    # 组合成自定义优化器
+    # Compose a custom optimizer
     from optimization import EvolutionOptimizationEngine, SemanticJudgeEvaluator
 
     custom_optimizer = EvolutionOptimizationEngine(
@@ -122,29 +122,29 @@ def example_3_using_registry():
 
 
 def example_4_result_analysis():
-    """示例4: 结果分析"""
+    """Example 4: result analysis."""
     print("\n" + "=" * 60)
     print("示例4: 优化结果分析")
     print("=" * 60)
 
     print("""
-    # 运行优化后分析结果
+    # Analyze results after optimization
     result = optimizer.optimize(target=None, context=context, budget=budget)
 
-    # 1. 最佳候选信息
+    # 1. Best candidate info
     if result.best_candidate:
         print(f"最佳候选ID: {result.best_candidate.id}")
         print(f"父候选ID: {result.best_candidate.parent_id}")
         print(f"生成策略: {result.best_candidate.metadata.get('generation_strategy')}")
         print(f"内容:\\n{result.best_candidate.content}")
 
-    # 2. 优化指标
+    # 2. Metrics
     print(f"\\n优化指标:")
     print(f"  总迭代次数: {result.metrics['total_iterations']}")
     print(f"  总Token消耗: {result.metrics['total_cost_tokens']}")
     print(f"  得分提升: {result.metrics['score_improvement']}")
 
-    # 3. 优化历史
+    # 3. History
     print(f"\\n优化历史:")
     for hist in result.optimization_history:
         print(f"  轮次 {hist['iteration']}: "
@@ -152,7 +152,7 @@ def example_4_result_analysis():
               f"最佳={hist['best_score']:.3f}, "
               f"平均={hist['avg_score']:.3f}")
 
-    # 4. 使用的组件
+    # 4. Components used
     print(f"\\n使用的组件:")
     for comp_type, comp_name in result.components_used.items():
         print(f"  {comp_type}: {comp_name}")
@@ -160,13 +160,13 @@ def example_4_result_analysis():
 
 
 def example_5_execution_context():
-    """示例5: ExecutionContext 详解"""
+    """Example 5: ExecutionContext overview."""
     print("\n" + "=" * 60)
     print("示例5: ExecutionContext 机制")
     print("=" * 60)
 
     print("""
-    # SimInject 使用 Variable 模式的 ExecutionContext
+    # SimInject uses an ExecutionContext in variable mode
     from optimization import ExecutionContextFactory
 
     exec_ctx = ExecutionContextFactory.create_for_sim_inject(
@@ -178,20 +178,20 @@ def example_5_execution_context():
     print(f"基础路径: {exec_ctx.base_path}")      # Path('/path/to/agent.dph')
     print(f"变量: {exec_ctx.variables}")          # {'$injects': ''}
 
-    # 候选解会自动包含执行上下文
+    # Candidates automatically carry the execution context
     candidate = Candidate(
         content="请注意数据验证",
         execution_context=exec_ctx
     )
 
-    # Evaluator 会自动解析 ExecutionContext 并执行相应的评估
-    # 对于 variable 模式，会构建类似这样的命令：
-    # dolphin run /path/to/agent.dph --vars '{"$injects": "请注意数据验证"}'
+    # Evaluator will interpret ExecutionContext and execute accordingly.
+    # For variable mode, it will build a command like:
+    # dolphin run /path/to/agent.dph --vars '{"$injects": "Please pay attention to data validation"}'
     """)
 
 
 def main():
-    """运行所有示例"""
+    """Run all examples."""
     print("\n" + "=" * 60)
     print("SimInject Optimizer 使用示例集")
     print("=" * 60)
@@ -209,7 +209,7 @@ def main():
     print("  1. 提供真实的 SemanticJudge 实例")
     print("  2. 准备实际的 agent.dph 文件和评估数据")
     print("  3. 配置适当的预算和优化参数")
-    print("\n详细文档请参考: experiments/analyst/optimization/README.md")
+    print("\n详细文档请参考: docs/optimization.md")
 
 
 if __name__ == '__main__':

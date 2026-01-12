@@ -1,51 +1,52 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TwoPhaseEvaluator - 两阶段评估器
+TwoPhaseEvaluator - two-phase evaluator
 
-核心思想：
-成本优化 - 先用快速近似评估筛选，再用精确评估验证。
+Core idea:
+Cost optimization: first use fast approximate evaluation to filter, then use accurate
+evaluation to validate.
 
-工作流程：
-1. Phase 1（筛选阶段）: 使用 ApproximateEvaluator 快速评估所有候选
-2. 过滤：只保留有潜力的候选（基于置信度阈值）
-3. Phase 2（验证阶段）: 使用 SemanticJudgeEvaluator 精确评估筛选后的候选
-4. 合并：保留精确评估的结果，淘汰的候选使用近似评估结果
+Workflow:
+1. Phase 1 (filtering): use ApproximateEvaluator to quickly evaluate all candidates
+2. Filter: keep only promising candidates (based on a confidence threshold)
+3. Phase 2 (validation): use an accurate evaluator (e.g., SemanticJudgeEvaluator)
+4. Merge: keep accurate results; eliminated candidates keep their approximate results
 
-优势：
-- 显著降低评估成本（避免对所有候选进行昂贵的精确评估）
-- 保持评估质量（对有潜力的候选进行完整评估）
-- 自适应策略（可根据预算动态调整两阶段的比例）
+Benefits:
+- Significantly reduces evaluation cost (avoids expensive evaluation for all candidates)
+- Preserves evaluation quality (fully evaluates promising candidates)
+- Adaptive strategy (can adjust phase ratios based on budget)
 """
 from typing import Any
 from dataclasses import dataclass
 
-from experiments.optimization.types import Candidate, EvaluationResult
-from experiments.optimization.protocols import Evaluator
-from experiments.optimization.evaluators.approximate_evaluator import ApproximateEvaluator
+from optimization.types import Candidate, EvaluationResult
+from optimization.protocols import Evaluator
+from optimization.evaluators.approximate_evaluator import ApproximateEvaluator
 
 
 @dataclass
 class TwoPhaseConfig:
-    """两阶段评估配置"""
-    # 第一阶段（近似评估）
-    phase1_min_confidence: float = 0.3  # 最低置信度
-    phase1_max_candidates: int = 10     # 最多保留数
+    """Configuration for two-phase evaluation."""
+    # Phase 1 (approximate evaluation)
+    phase1_min_confidence: float = 0.3  # Minimum confidence
+    phase1_max_candidates: int = 10     # Maximum number of candidates to keep
 
-    # 第二阶段（精确评估）
-    phase2_enable: bool = True          # 是否启用第二阶段
-    phase2_min_candidates: int = 1      # 至少评估的候选数
+    # Phase 2 (accurate evaluation)
+    phase2_enable: bool = True          # Whether to enable phase 2
+    phase2_min_candidates: int = 1      # Minimum number of candidates to evaluate
 
-    # 自适应策略
-    adaptive: bool = True               # 是否自适应调整
-    cost_threshold: float = 100.0       # 成本阈值（超过则更保守）
+    # Adaptive strategy
+    adaptive: bool = True               # Whether to adaptively adjust
+    cost_threshold: float = 100.0       # Cost threshold (be more conservative above this)
 
 
 class TwoPhaseEvaluator(Evaluator):
     """
-    两阶段评估器
+    Two-phase evaluator.
 
-    结合快速近似评估和精确评估，平衡成本与质量。
+    Combines fast approximate evaluation and accurate evaluation to balance cost and quality.
     """
 
     def __init__(
@@ -56,15 +57,15 @@ class TwoPhaseEvaluator(Evaluator):
     ):
         """
         Args:
-            phase1_evaluator: 第一阶段评估器（快速近似）
-            phase2_evaluator: 第二阶段评估器（精确评估）
-            config: 配置参数
+            phase1_evaluator: Phase 1 evaluator (fast approximate).
+            phase2_evaluator: Phase 2 evaluator (accurate).
+            config: Configuration.
         """
         self.phase1 = phase1_evaluator
         self.phase2 = phase2_evaluator
         self.config = config or TwoPhaseConfig()
 
-        # 统计信息
+        # Stats
         self.stats = {
             'phase1_count': 0,
             'phase2_count': 0,
@@ -74,24 +75,25 @@ class TwoPhaseEvaluator(Evaluator):
 
     def evaluate(self, candidate: Candidate, context: dict) -> EvaluationResult:
         """
-        单个候选的两阶段评估
+        Two-phase evaluation for a single candidate.
 
-        注：对于单个候选，通常直接使用 phase2（精确评估）
+        Note: for single-candidate evaluation, phase2 is typically used only when
+        phase1 deems it promising.
         """
-        # 先进行快速评估
+        # Phase 1: fast evaluation
         phase1_result = self.phase1.evaluate(candidate, context)
         self.stats['phase1_count'] += 1
 
-        # 如果置信度太低，直接返回 phase1 结果
+        # If confidence is too low, return phase1 result directly
         if not phase1_result.metadata.get('is_promising', False):
             self.stats['filtered_count'] += 1
             return phase1_result
 
-        # 进行精确评估
+        # Phase 2: accurate evaluation
         phase2_result = self.phase2.evaluate(candidate, context)
         self.stats['phase2_count'] += 1
 
-        # 合并 metadata
+        # Merge metadata
         phase2_result.metadata['phase1_score'] = phase1_result.score
         phase2_result.metadata['phase1_confidence'] = phase1_result.metadata.get('is_promising', False)
 
@@ -103,18 +105,18 @@ class TwoPhaseEvaluator(Evaluator):
         context: dict
     ) -> list[EvaluationResult]:
         """
-        批量评估（两阶段优化的核心）
+        Batch evaluation (core of two-phase optimization).
 
-        工作流程：
-        1. Phase 1: 快速评估所有候选
-        2. 筛选：保留有潜力的候选
-        3. Phase 2: 精确评估筛选后的候选
-        4. 合并结果
+        Workflow:
+        1. Phase 1: fast evaluation for all candidates
+        2. Filter: keep only promising candidates
+        3. Phase 2: accurate evaluation for filtered candidates
+        4. Merge results
         """
         if not candidates:
             return []
 
-        # === Phase 1: 快速评估 ===
+        # === Phase 1: fast evaluation ===
         print(f"  [TwoPhase] Phase 1: 快速评估 {len(candidates)} 个候选...")
         phase1_results = []
         for candidate in candidates:
@@ -122,7 +124,7 @@ class TwoPhaseEvaluator(Evaluator):
             phase1_results.append(result)
             self.stats['phase1_count'] += 1
 
-        # 筛选有潜力的候选
+        # Filter promising candidates
         promising_candidates = []
         promising_indices = []
         filtered_results = []
@@ -132,19 +134,19 @@ class TwoPhaseEvaluator(Evaluator):
                 promising_candidates.append(candidates[i])
                 promising_indices.append(i)
             else:
-                # 淘汰的候选，保留 phase1 结果
+                # Eliminated candidates keep their phase1 result
                 filtered_results.append((i, result))
                 self.stats['filtered_count'] += 1
 
         print(f"  [TwoPhase] 筛选后保留 {len(promising_candidates)} 个候选（淘汰 {len(filtered_results)} 个）")
 
-        # 如果没有候选通过筛选，返回 phase1 结果
+        # If none passed the filter, return phase1 results
         if not promising_candidates:
             return phase1_results
 
-        # 自适应调整：如果候选数仍然很多，进一步限制
+        # Adaptive adjustment: further limit when too many candidates remain
         if self.config.adaptive and len(promising_candidates) > self.config.phase1_max_candidates:
-            # 按 phase1 分数排序，只保留 top-k
+            # Sort by phase1 score and keep top-k
             sorted_pairs = sorted(
                 zip(promising_candidates, promising_indices,
                     [phase1_results[i] for i in promising_indices]),
@@ -156,7 +158,7 @@ class TwoPhaseEvaluator(Evaluator):
 
             print(f"  [TwoPhase] 自适应限制为 {len(promising_candidates)} 个候选")
 
-        # === Phase 2: 精确评估 ===
+        # === Phase 2: accurate evaluation ===
         if self.config.phase2_enable:
             print(f"  [TwoPhase] Phase 2: 精确评估 {len(promising_candidates)} 个候选...")
             phase2_results_map = {}
@@ -165,30 +167,30 @@ class TwoPhaseEvaluator(Evaluator):
                 original_idx = promising_indices[i]
                 result = self.phase2.evaluate(candidate, context)
 
-                # 记录 phase1 的信息
+                # Record phase1 information
                 result.metadata['phase1_score'] = phase1_results[original_idx].score
                 result.metadata['evaluator'] = 'two_phase'
 
                 phase2_results_map[original_idx] = result
                 self.stats['phase2_count'] += 1
 
-            # === 合并结果 ===
+            # === Merge results ===
             final_results = []
             for i in range(len(candidates)):
                 if i in phase2_results_map:
-                    # 有 phase2 结果，使用精确评估
+                    # Use phase2 result when present
                     final_results.append(phase2_results_map[i])
                 else:
-                    # 被淘汰的候选，使用 phase1 结果
+                    # Eliminated candidates use phase1 result
                     final_results.append(phase1_results[i])
 
             return final_results
         else:
-            # 不启用 phase2，直接返回 phase1 结果
+            # Phase2 disabled: return phase1 results directly
             return phase1_results
 
     def get_stats(self) -> dict:
-        """获取统计信息"""
+        """Get evaluation statistics."""
         total = self.stats['phase1_count']
         if total == 0:
             return self.stats
@@ -202,7 +204,7 @@ class TwoPhaseEvaluator(Evaluator):
         }
 
     def reset_stats(self):
-        """重置统计信息"""
+        """Reset evaluation statistics."""
         self.stats = {
             'phase1_count': 0,
             'phase2_count': 0,
@@ -213,9 +215,9 @@ class TwoPhaseEvaluator(Evaluator):
 
 class AdaptiveTwoPhaseEvaluator(TwoPhaseEvaluator):
     """
-    自适应两阶段评估器
+    Adaptive two-phase evaluator.
 
-    根据预算和已用成本，动态调整两阶段的策略。
+    Dynamically adjusts two-phase strategy based on budget and usage.
     """
 
     def __init__(
@@ -234,24 +236,24 @@ class AdaptiveTwoPhaseEvaluator(TwoPhaseEvaluator):
         candidates: list[Candidate],
         context: dict
     ) -> list[EvaluationResult]:
-        """自适应批量评估"""
-        # 估算剩余预算
+        """Adaptive batch evaluation."""
+        # Estimate remaining budget
         if self.budget and self.budget.max_iters:
             remaining_ratio = 1.0 - (self.iterations_completed / self.budget.max_iters)
 
-            # 如果预算紧张（剩余<30%），更保守地使用 phase2
+            # If budget is tight (remaining < 30%), use phase2 more conservatively
             if remaining_ratio < 0.3:
                 original_max = self.config.phase1_max_candidates
                 self.config.phase1_max_candidates = max(
                     self.config.phase2_min_candidates,
-                    int(original_max * 0.5)  # 减少 50%
+                    int(original_max * 0.5)  # Reduce by 50%
                 )
                 print(f"  [Adaptive] 预算紧张，phase2 限制调整为 {self.config.phase1_max_candidates}")
 
-        # 执行评估
+        # Run evaluation
         results = super().batch_evaluate(candidates, context)
 
-        # 更新迭代计数
+        # Update iteration counter
         self.iterations_completed += 1
 
         return results
@@ -262,7 +264,7 @@ def create_default_two_phase_evaluator(
     phase2_evaluator: Evaluator,
     adaptive: bool = True
 ) -> TwoPhaseEvaluator:
-    """创建默认配置的两阶段评估器"""
+    """Create a two-phase evaluator with default settings."""
     config = TwoPhaseConfig(
         phase1_min_confidence=0.3,
         phase1_max_candidates=10,

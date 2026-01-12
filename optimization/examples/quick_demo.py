@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-快速演示：展示优化框架的核心工作流程
+Quick demo: showcases the core workflow of the optimization framework.
 """
 import sys
 from pathlib import Path
@@ -18,13 +18,13 @@ from optimization import (
 )
 
 
-# === Mock 组件（仅用于演示） ===
+# === Mock components (demo only) ===
 
 class SimpleGenerator:
-    """简单的候选生成器（演示用）"""
+    """A simple candidate generator (demo only)."""
 
     def initialize(self, target, context):
-        """生成3个初始候选"""
+        """Generate 3 initial candidates."""
         print("\n[Generator] 生成初始候选...")
         candidates = []
         for i in range(3):
@@ -38,7 +38,7 @@ class SimpleGenerator:
         return candidates
 
     def evolve(self, selected, evaluations, context):
-        """基于最佳候选生成改进版本"""
+        """Generate an improved version from the best candidate."""
         if not selected:
             return []
 
@@ -54,20 +54,20 @@ class SimpleGenerator:
 
 
 class SimpleEvaluator:
-    """简单的评估器（演示用）"""
+    """A simple evaluator (demo only)."""
 
     def __init__(self):
         self.eval_count = 0
 
     def evaluate(self, candidate, context):
-        """评估单个候选"""
+        """Evaluate a single candidate."""
         self.eval_count += 1
-        # 模拟评分：每次评估分数递增
+        # Mock scoring: increase the score on each evaluation
         score = 0.5 + (self.eval_count * 0.1)
         return EvaluationResult(score=min(score, 1.0), cost_tokens=100)
 
     def batch_evaluate(self, candidates, context):
-        """批量评估"""
+        """Batch evaluate candidates."""
         print(f"\n[Evaluator] 评估 {len(candidates)} 个候选...")
         results = []
         for candidate in candidates:
@@ -78,21 +78,21 @@ class SimpleEvaluator:
 
 
 def demo_basic_flow():
-    """演示1: 基本优化流程"""
+    """Demo 1: basic optimization flow."""
     print("=" * 70)
     print("演示1: 基本优化流程")
     print("=" * 70)
 
-    # 获取注册表
+    # Get registry
     registry = get_registry()
 
-    # 创建组件
+    # Create components
     generator = SimpleGenerator()
     evaluator = SimpleEvaluator()
     selector = registry.create_selector('topk', k=1)
     controller = registry.create_controller('budget')
 
-    # 创建优化引擎
+    # Create optimization engine
     engine = EvolutionOptimizationEngine(
         generator=generator,
         evaluator=evaluator,
@@ -100,12 +100,12 @@ def demo_basic_flow():
         controller=controller
     )
 
-    # 运行优化
+    # Run optimization
     print("\n开始优化...")
     budget = Budget(max_iters=3)
     result = engine.optimize(target=None, context={}, budget=budget)
 
-    # 展示结果
+    # Display results
     print("\n" + "=" * 70)
     print("优化结果:")
     print("=" * 70)
@@ -128,14 +128,14 @@ def demo_basic_flow():
 
 
 def demo_early_stopping():
-    """演示2: 早停机制"""
+    """Demo 2: early stopping."""
     print("\n\n" + "=" * 70)
     print("演示2: 早停机制")
     print("=" * 70)
 
     registry = get_registry()
 
-    # 使用早停控制器
+    # Use early-stopping controller
     engine = EvolutionOptimizationEngine(
         generator=SimpleGenerator(),
         evaluator=SimpleEvaluator(),
@@ -146,7 +146,7 @@ def demo_early_stopping():
     print("\n说明: 使用早停控制器（patience=2, min_improvement=0.5）")
     print("如果连续2轮得分提升 < 0.5，将提前终止优化\n")
 
-    budget = Budget(max_iters=10)  # 最多10轮，但会因为早停提前结束
+    budget = Budget(max_iters=10)  # Max 10 iterations, may stop early due to early stopping
     result = engine.optimize(target=None, context={}, budget=budget)
 
     print(f"\n实际执行轮数: {result.metrics['total_iterations']} (最大预算: 10)")
@@ -154,7 +154,7 @@ def demo_early_stopping():
 
 
 def demo_component_registry():
-    """演示3: 组件注册表"""
+    """Demo 3: component registry."""
     print("\n\n" + "=" * 70)
     print("演示3: 组件注册表")
     print("=" * 70)
@@ -177,7 +177,7 @@ def demo_component_registry():
 
 
 def main():
-    """运行所有演示"""
+    """Run all demos."""
     print("\n")
     print("*" * 70)
     print("*" + " " * 68 + "*")
@@ -193,9 +193,9 @@ def main():
     print("演示完成！")
     print("=" * 70)
     print("\n📖 更多信息:")
-    print("  - 完整文档: experiments/analyst/optimization/README.md")
-    print("  - 实施总结: experiments/analyst/optimization/IMPLEMENTATION_SUMMARY.md")
-    print("  - 使用示例: experiments/analyst/optimization/examples/sim_inject_example.py")
+    print("  - 完整文档: docs/optimization.md")
+    print("  - 实施总结: baks/optimization/IMPLEMENTATION_SUMMARY.md")
+    print("  - 使用示例: optimization/examples/sim_inject_example.py")
     print("  - 运行测试: pytest tests/test_optimization.py -v")
     print("\n")
 
