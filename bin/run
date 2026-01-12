@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.10
 """
 Run script for Dolphin Language experiments.
 
@@ -42,8 +42,12 @@ import itertools
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-from DolphinLanguageSDK.log import get_logger
-from DolphinLanguageSDK.constant import (
+
+# Add dolphin src to path
+sys.path.insert(0, str(Path.home() / "dev/github/dolphin/src"))
+
+from dolphin.core.logging.logger import get_logger
+from dolphin.core.common.constants import (
     DOLPHIN_VARIABLES_OUTPUT_START,
     DOLPHIN_VARIABLES_OUTPUT_END,
 )
