@@ -1,0 +1,24 @@
+# Browse_Comp Benchmark Configuration
+answer_variable: final_result
+benchmark_comparator: custom
+
+# Field mapping configuration
+# If your benchmark.json uses different field names, configure the mapping here
+# Default values are shown (can be omitted if using defaults)
+field_mapping:
+  query_field: "question"      # Maps to internal "Question" field
+  gold_label_field:         # Maps to internal "Answer" field  
+    result: "SQL"
+    context:
+      db_id: "db_id"
+  topic_field: "db_id"         # Maps to internal "Topic" field
+
+# Field as args configuration
+# Maps benchmark.json fields to dolphin command line arguments
+# Example: field_as_args:
+#   Evidence: "evidence"    # Maps "Evidence" field to --evidence argument
+#   Context: "context"      # Maps "Context" field to --context argument
+field_as_args: 
+  evidence: "evidence"
+  schema: "schema"
+  db_id: "db_id"

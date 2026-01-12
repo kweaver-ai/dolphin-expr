@@ -1,0 +1,202 @@
+default: v3
+fast: qwen-turbo
+clouds:
+  default: aliyun
+  aliyun:
+    user_id: b32ad442-aadd-11ef-ac00-3e62f7949701
+    api: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: sk-48cfeed735a0448987ba4eb6ffe0cfe2
+  deepseek:
+    api: https://api.deepseek.com/beta
+    api_key: sk-d6061da0d2d64e78a8061a2de0060f8d
+  zhipu:
+    api: https://open.bigmodel.cn
+    api_key: cd8f3f230e45fb94e652ef2d499a2e5c.gSaGDrt4Bhw0Nt7u
+llms:
+  qwen-plus:
+    cloud: aliyun
+    id: 18928543177492439044
+    model_name: qwen-plus-2025-07-28
+    type_api: openai
+  qwen-turbo:
+    cloud: aliyun
+    id: 18928543177492439044
+    model_name: qwen-turbo-latest
+    type_api: openai
+  qwen-coder:
+    cloud: aliyun
+    id: 18928543177492439044
+    model_name: qwen3-coder-plus
+    type_api: openai
+  v3:
+    cloud: aliyun
+    id: 18928543177492439044
+    model_name: deepseek-v3
+    type_api: openai
+vm:
+  host: "localhost"
+  port: 49881
+  username: "xupeng"
+  encrypted_password: "Z0FBQUFBQm45SmJwX1p1cVZzT0Q4M3VlaWU0Smx0ek1UVzZNR2h0OElwOTY2WUNjaW15RGgtbE50WEc0azBMeWJHSVRQOEduZ25LLUdyU1NLYXNjS0RLTFVfc1R0QTJwWlE9PQ=="
+  connection_type: "ssh"
+  ssh_key_path: "/Users/xupeng/.colima/_lima/_config/user"
+
+# Context Engineer 配置
+context_engineer:
+  import_mem: false
+  default_strategy: "truncation"
+  # 约束条件配置
+  constraints:
+    max_input_tokens: 64000      # 最大输入token数
+    reserve_output_tokens: 16384   # 为输出预留的token数（会被模型的max_tokens自动覆盖）
+    preserve_system: true         # 是否保留系统消息
+  # 策略配置（可选）
+  strategy_configs:
+    # 自定义滑动窗口大小
+    sliding_window_15:
+      type: "sliding_window"
+      window_size: 15
+
+# Memory System 配置
+memory:
+  enabled: false
+  storage_path: "data/memory/"     # 记忆存储路径
+  dialog_path: "data/dialog/"      # 对话记录存储路径
+  default_top_k: 10                # 默认检索返回数量
+
+# 技能加载配置
+skill:
+  # 指定要加载的技能列表，如果不配置则加载所有技能
+  # 支持的格式：
+  # - "vm_skillkit": 加载vm相关技能
+  # - "search_skillkit": 加载搜索相关技能
+  # - "mcp": 加载所有MCP服务器
+  # - "mcp.filesystem": 加载特定的MCP服务器
+  # - "mcp.memory": 加载特定的MCP服务器
+  # - "mcp.fetch": 加载特定的MCP服务器
+  # - "mcp.playwright": 加载特定的MCP服务器
+  enabled_skills:
+    #- "vm_skillkit"
+    - "sql_skillkit"
+    - "ontology_skillkit"
+    - "cognitive_skillkit"
+    #- "mcp"  # 加载所有MCP服务器
+    # 或者可以指定具体的MCP服务器：
+    # - "mcp.filesystem"
+    # - "mcp.memory"
+    # - "mcp.fetch"
+    # - "mcp.playwright"
+
+# MCP 集成配置 - 使用安全的工作目录
+mcp:
+  enabled: true
+  servers:
+    # Stdio 模式：启动并管理 MCP 服务器进程
+    - name: "filesystem"
+      connection_mode: "stdio"
+      command: "npx"
+      args: ["@modelcontextprotocol/server-filesystem", 
+             "/private/tmp/mcp-workspace", 
+             "/Users/xupeng/dev/aishu/dolphin-language",
+             "/Users/xupeng/Documents"]  # 使用 Documents 替代 Downloads
+      timeout: 30
+      enabled: true
+      auth:
+        type: "none"
+    
+    - name: "memory"
+      connection_mode: "stdio"
+      command: "npx"
+      args: ["@modelcontextprotocol/server-memory"]
+      timeout: 30
+      enabled: true
+      auth:
+        type: "none"
+    
+    # MCP 社区 fetch 插件 - 使用 fetcher-mcp
+    - name: "fetch"
+      connection_mode: "stdio"
+      command: "fetcher-mcp"
+      args: []
+      timeout: 30
+      enabled: true  # 启用此服务器
+      auth:
+        type: "none"
+    
+    # MCP 官方 playwright 插件
+    - name: "playwright"
+      connection_mode: "stdio"
+      command: "npx"
+      args: ["@playwright/mcp", 
+             "--headless", 
+             "--no-sandbox",
+             "--isolated"]
+      timeout: 60  # playwright可能需要更长时间启动
+      enabled: true
+      auth:
+        type: "none"
+    
+    - name: "sequential_thinking"
+      connection_mode: "stdio"
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+      timeout: 30
+      enabled: true
+      auth:
+        type: "none"
+
+    # 扩展性配置示例
+    - name: "database"
+      connection_mode: "http"
+      url: "http://localhost:3004"
+      timeout: 45
+      enabled: false
+      auth:
+        type: "bearer"
+        token: "your-database-token"
+    
+    - name: "custom_service"
+      connection_mode: "http"
+      url: "https://your-mcp-server.com/api/v1"
+      timeout: 60
+      enabled: false
+      auth:
+        type: "basic"
+        username: "your-username"
+        password: "your-password"
+
+ontology:
+  dataSources:
+  - name: california_schools
+    type: SQLITE
+    database: /Users/xupeng/lab/bird_data/dev/dev_databases/california_schools/california_schools.sqlite
+  - name: card_games
+    type: SQLITE
+    database: /Users/xupeng/lab/bird_data/dev/dev_databases/card_games/card_games.sqlite
+  - name: codebase_community
+    type: SQLITE
+    database: /Users/xupeng/lab/bird_data/dev/dev_databases/codebase_community/codebase_community.sqlite
+  - name: debit_card_specializing
+    type: SQLITE
+    database: /Users/xupeng/lab/bird_data/dev/dev_databases/debit_card_specializing/debit_card_specializing.sqlite
+  - name: european_football_2
+    type: SQLITE
+    database: /Users/xupeng/lab/bird_data/dev/dev_databases/european_football_2/european_football_2.sqlite
+  - name: financial
+    type: SQLITE
+    database: /Users/xupeng/lab/bird_data/dev/dev_databases/financial/financial.sqlite
+  - name: formula_1
+    type: SQLITE
+    database: /Users/xupeng/lab/bird_data/dev/dev_databases/formula_1/formula_1.sqlite
+  - name: student_club
+    type: SQLITE
+    database: /Users/xupeng/lab/bird_data/dev/dev_databases/student_club/student_club.sqlite
+  - name: superhero
+    type: SQLITE
+    database: /Users/xupeng/lab/bird_data/dev/dev_databases/superhero/superhero.sqlite
+  - name: thrombosis_prediction
+    type: SQLITE
+    database: /Users/xupeng/lab/bird_data/dev/dev_databases/thrombosis_prediction/thrombosis_prediction.sqlite
+  - name: toxicology
+    type: SQLITE
+    database: /Users/xupeng/lab/bird_data/dev/dev_databases/toxicology/toxicology.sqlite

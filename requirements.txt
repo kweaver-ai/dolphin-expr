@@ -1,0 +1,7 @@
+# Dolphin Language SDK - 核心依赖
+# 建议使用本地开发版本：pip install -e ~/dev/aishu/dolphin-language
+# 或者从 Git 仓库安装（如果有的话）
+dolphin-language-sdk>=0.2.1
+
+# 实验系统依赖
+pyyaml>=6.0
