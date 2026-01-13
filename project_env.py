@@ -58,12 +58,18 @@ def find_dolphin_cli(*, repo_root: Path | None = None) -> str:
 
     Priority:
     1) Environment variable `DOLPHIN_BIN`
-    2) `dolphin` on `PATH`
-    3) (Optional) `repo_root/bin/dolphin`
+    2) (Optional) `repo_root/.venv/bin/dolphin`
+    3) `dolphin` on `PATH`
+    4) (Optional) `repo_root/bin/dolphin`
     """
     p = resolve_path(os.environ.get("DOLPHIN_BIN"))
     if p and p.exists():
         return str(p)
+
+    if repo_root:
+        venv_bin = (repo_root / ".venv" / "bin" / "dolphin").resolve()
+        if venv_bin.exists():
+            return str(venv_bin)
 
     which = shutil.which("dolphin")
     if which:

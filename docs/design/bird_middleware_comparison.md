@@ -1,6 +1,6 @@
 # Bird 实验：KN 中间件（Context Loader）vs 直连 SQL 对比方案（推荐版）
 
-目标：在 **不改动本仓库 Python 代码**（`bin/*`、`analyst/*`、`optimization/*`）的前提下，为 Bird 实验新增一个走 **KN 中间件（Context Loader）** 的 agent，并与当前 **直连 SQL（executeSQL）** 的 agent 做可重复、可量化对比。
+目标：为 Bird 实验新增一个走 **KN 中间件（Context Loader）** 的 agent，并与当前 **直连 SQL（executeSQL）** 的 agent 做可重复、可量化对比。
 
 本方案默认：KN 背后数据同源于 SQL（只是多一层中间件）。
 
@@ -9,7 +9,7 @@
 ## 推荐总览
 
 - **推荐接入方式：Dynamic Tools（首选）**
-  - 原因：你们的 `.adp`/`get_action_info` 协议天然产出 `_dynamic_tools`，且你已在主 dolphin 修复 `_load_dynamic_tools` 的新路径导入（不再依赖废弃的 `DolphinLanguageSDK.skill.*`）。
+  - 原因：你们的 `.adp`/`get_action_info` 协议天然产出 `_dynamic_tools`，dolphin 会把它们转成 `DynamicAPISkillFunction` 注入到当前 skillset，便于做“直连 SQL vs 中间件”对比。
 - **备选接入方式：MCP 封装（第二选择）**
   - 原因：隔离清晰、通用性强，但需要额外实现/部署一个 MCP server 做 HTTP 转发，落地成本更高。
 
@@ -76,7 +76,7 @@ Bird benchmark 的判定依赖：
 - `fixed_params`
 - `api_call_strategy`（**必须实际返回该字段**，dolphin 用它判断分支）
 
-### 4.2 dolphin 动态工具加载要求（你已修复后的版本）
+### 4.2 dolphin 动态工具加载要求（推荐行为）
 
 运行时流程（推荐）：
 1) agent 先调用 `get_action_info`（提供 `kn_id` + `at_id` + `unique_identity`）
@@ -92,10 +92,10 @@ Bird benchmark 的判定依赖：
 
 它不需要知道底层是 SQL 还是图数据库；对比实验只观察结果与过程。
 
-### 4.4 防作弊：必须加 `must_execute`
+### 4.4 防作弊：必须加 `must_execute`（推荐按 entrypoint 分开）
 
 为了确保中间件链路真实参与对比，推荐在 spec 里加：
-- `must_execute: ["get_action_info", "...至少一个动态工具名..."]`
+- `must_execute_by_entrypoint: { kn_middleware: ["get_action_info"], explore_based: ["executeSQL"] }`
 
 这样可以避免 agent 走捷径回退到 `executeSQL`（即便你未来把 `executeSQL` 也启用在同一环境里）。
 
@@ -116,43 +116,39 @@ Bird benchmark 的判定依赖：
 
 ---
 
-## 6) 实验落地步骤（推荐路径）
+## 6) 实验落地步骤（已落地到本仓库的推荐路径）
 
 ### 6.1 需要依次调整哪些内容（按顺序）
 
-下面列表只包含“实验素材/配置”的变更，不涉及修改本仓库 Python 代码。
+1) **配置中间件地址与鉴权（运行前）**
+   - 必配环境变量：
+     - `CONTEXT_LOADER_BASE_URL`（KN middleware 服务地址，格式：`http://host:port`，例如：`http://192.168.167.13:30779`）
+       - 用于大部分接口（kn_search, kn_schema_search, query_object_instance 等）
+     - `CONTEXT_LOADER_ACTION_INFO_BASE_URL`（可选，Action Info 服务地址，格式：`http://host:port`，例如：`http://192.168.167.13:8000`）
+       - 如果未设置，会回退使用 `CONTEXT_LOADER_BASE_URL`
+       - 用于 `get_action_info` 接口（通常端口不同）
+     - `CONTEXT_LOADER_ACCOUNT_ID`
+     - `CONTEXT_LOADER_ACCOUNT_TYPE`（`user` / `system`）
+   - 可选：`CONTEXT_LOADER_TIMEOUT_SECONDS`（默认 30）
+   - **注意**：如果未配置 `CONTEXT_LOADER_BASE_URL`，代码会 fail fast 并提示配置错误（不再使用硬编码的默认值）
 
-1) **准备环境变量与中间件地址（运行前）**
-   - 确保运行时能访问 Context Loader 服务（例如把 `.adp` 里的 `server_url` 切到你可达的地址）。
-   - 准备需要的鉴权 header/账号信息（建议走环境变量，不进仓库）。
+2) **启用 Context Loader 工具（本仓库已实现）**
+   - 自定义 skillkit：`design/bird_baseline/skillkits/context_loader_skillkit.py`
+   - 运行器已自动传 `--skill-folder <run_env_dir>/skillkits`（无需你手动改命令）
+   - 暴露工具名与 `.adp` 对齐：`get_action_info / kn_search / kn_schema_search / query_object_instance / query_instance_subgraph / get_logic_property_values`
+   - 依赖：dolphin 需要正确支持 `_dynamic_tools` 注入与 `api_call_strategy` 策略透传（否则动态工具可能不执行或直接报错）
 
-2) **新增一个 KN agent（新增 `.dph` 文件）**
-   - 位置：`design/bird_baseline/dolphins/kn_based.dph`（名称可自定）
-   - 逻辑：
-     - 先调用 `get_action_info`（传入 `kn_id/at_id/unique_identity`）拿到 `_dynamic_tools`
-     - 再调用动态注入的工具完成查询/计算
-     - 最后输出 `final_result={columns,data}`（严格对齐排序/limit/null）
+3) **新增 KN 中间件 agent（本仓库已实现）**
+   - DPH：`design/bird_baseline/dolphins/kn_middleware.dph`
+   - 关键契约：先 `get_action_info` → 动态注入工具 → 输出 `{'columns':..., 'data':...}`
 
-3) **为对比实验更新 spec（只改实验参数，不动代码）**
-   - 文件：`design/bird_baseline/spec.txt`
-   - 建议改动：
-     - `entrypoints`：同时包含基线与中间件 agent，例如 `["baseline", "kn_based"]`（或 `explore_based` vs `kn_based`）
-     - `num_run_cases`：先设 3（冒烟），通过后再改到 30/100
-     - `threads/num_samples`：先设小，确保可复现
-     - `variables.tools`：按 entrypoint 需要配置（如果你的 DPH 用到了 `$tools`）
+4) **更新 Bird spec 做对比（本仓库已实现）**
+   - `design/bird_baseline/spec.txt`：
+     - `entrypoints` 同时跑 `explore_based` 与 `kn_middleware`
+     - `must_execute_by_entrypoint`：分别强制 `executeSQL` vs `get_action_info`
+     - 新增变量：`kn_at_id`、`kn_id`（为空时 agent 用 `bird_$db_id`）
 
-4) **开启 `must_execute` 防作弊（强烈推荐）**
-   - 文件：`design/bird_baseline/spec.txt`
-   - 新增/设置：`must_execute: ["get_action_info"]`（以及你期望必然发生的动态工具名）
-   - 目的：确保 KN 路线一定经过中间件，而不是回退到 `executeSQL`。
-
-5) **确保 Dolphin 运行时开启必要 skill（配置层）**
-   - 文件：`design/bird_baseline/config/global.yaml`
-   - 你至少需要：
-     - `sql_skillkit`（用于 baseline）
-     - 以及能执行 `get_action_info` 的工具所在机制（取决于你如何把 context loader 工具暴露给 dolphin：静态 tool、mcp、或其它）
-
-6) **跑冒烟并产出对比报告**
+5) **冒烟与分析**
    - 运行：`./bin/run --name bird_baseline`
    - 分析：`./bin/analyst <env_id> --general`
 

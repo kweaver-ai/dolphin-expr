@@ -1,4 +1,6 @@
-# Agent Development Guide
+# Agent Development Standards
+
+Note: For rules that actually apply to Codex/agents, refer to `AGENTS.md` in the repository root; this document serves as supplementary documentation.
 
 ## Code Style Requirements
 

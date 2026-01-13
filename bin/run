@@ -207,7 +207,7 @@ def apply_field_mapping(benchmark_data, benchmark_config):
     return mapped_data
 
 
-def load_benchmark(benchmark_name, root_dir, num_run_cases=None):
+def load_benchmark(benchmark_name, root_dir, num_run_cases=None, case_filter=None):
     """
     Load benchmark data and configuration from the new benchmark structure.
 
@@ -215,6 +215,7 @@ def load_benchmark(benchmark_name, root_dir, num_run_cases=None):
         benchmark_name: Name of the benchmark (e.g., 'browse_comp')
         root_dir: Root directory of the project
         num_run_cases: Optional limit on number of benchmark cases to load
+        case_filter: Optional dictionary for filtering cases (e.g. {'db_id': ['value1', 'value2']})
 
     Returns:
         Tuple of (benchmark_data, benchmark_config)
@@ -244,13 +245,6 @@ def load_benchmark(benchmark_name, root_dir, num_run_cases=None):
         if not isinstance(benchmark_data, list):
             print(f"Error: Benchmark file should contain a JSON array", file=sys.stderr)
             sys.exit(1)
-
-        # Limit the number of benchmark cases if specified
-        if num_run_cases is not None and num_run_cases > 0:
-            benchmark_data = benchmark_data[:num_run_cases]
-            print(
-                f"Limited benchmark data to {len(benchmark_data)} cases (num_run_cases: {num_run_cases})"
-            )
 
     except Exception as e:
         print(
@@ -302,6 +296,50 @@ def load_benchmark(benchmark_name, root_dir, num_run_cases=None):
 
     # Apply field mapping if configured
     benchmark_data = apply_field_mapping(benchmark_data, benchmark_config)
+
+    # Apply case filter if specified
+    if case_filter:
+        # Validate case_filter format
+        if not isinstance(case_filter, dict):
+            print(f"Warning: case_filter must be a dictionary, got {type(case_filter).__name__}. Ignoring filter.")
+        else:
+            filtered_data = []
+            for item in benchmark_data:
+                match = True
+                for key, valid_values in case_filter.items():
+                    # Get value using dot notation (supports nested fields like 'GoldLabel.context.db_id')
+                    item_value = get_nested_value(item, key)
+                    
+                    # Check if value matches
+                    if isinstance(valid_values, list):
+                        if item_value not in valid_values:
+                            match = False
+                            break
+                    else:
+                        if item_value != valid_values:
+                            match = False
+                            break
+                if match:
+                    filtered_data.append(item)
+            
+            original_count = len(benchmark_data)
+            filtered_count = len(filtered_data)
+            print(f"Filtered benchmark data from {original_count} to {filtered_count} cases using filter: {case_filter}")
+            
+            # Warn if no cases matched
+            if filtered_count == 0:
+                print(f"Warning: No benchmark cases matched the filter criteria. Please check your case_filter configuration.")
+            
+            benchmark_data = filtered_data
+
+    # Limit the number of benchmark cases if specified (applied AFTER filtering)
+    if num_run_cases is not None and num_run_cases > 0:
+        original_len = len(benchmark_data)
+        benchmark_data = benchmark_data[:num_run_cases]
+        if len(benchmark_data) < original_len:
+            print(
+                f"Limited benchmark data to {len(benchmark_data)} cases (num_run_cases: {num_run_cases})"
+            )
 
     return benchmark_data, benchmark_config
 
@@ -1020,6 +1058,23 @@ def run_single_benchmark_case(
     # Use subprocess to avoid shell interpretation issues
     import subprocess
 
+    # Pass Context Loader runtime configuration via environment variables.
+    # This avoids relying on interactive shells (e.g. ~/.bashrc) and makes runs reproducible.
+    child_env = os.environ.copy()
+    # Map spec.txt variables (case_variables) -> env vars consumed by ContextLoaderSkillkit.
+    # NOTE: Keep variable keys in spec.txt stable for reproducibility.
+    var_to_env = {
+        "context_loader_base_url": "CONTEXT_LOADER_BASE_URL",
+        "context_loader_action_info_base_url": "CONTEXT_LOADER_ACTION_INFO_BASE_URL",
+        "context_loader_account_id": "CONTEXT_LOADER_ACCOUNT_ID",
+        "context_loader_account_type": "CONTEXT_LOADER_ACCOUNT_TYPE",
+        "context_loader_timeout_seconds": "CONTEXT_LOADER_TIMEOUT_SECONDS",
+        "kn_id": "CONTEXT_LOADER_KN_ID",
+    }
+    for var_key, env_key in var_to_env.items():
+        if isinstance(case_variables, dict) and var_key in case_variables and case_variables[var_key] is not None:
+            child_env[env_key] = str(case_variables[var_key])
+
     # Run the command using subprocess for better control
     original_cwd = os.getcwd()
     os.chdir(run_env_dir)
@@ -1033,6 +1088,7 @@ def run_single_benchmark_case(
                         stderr=subprocess.STDOUT,
                         cwd=run_env_dir,
                         timeout=500,
+                        env=child_env,
                     )
                     exit_code = result.returncode
                 except Exception as e:
@@ -1268,6 +1324,11 @@ def run_single_experiment(
             cmd_parts.extend(["--folder", str(dolphin_folder)])
         else:
             cmd_parts.extend(["--folder", str(dolphins_path)])
+
+        # Auto-load custom skillkits if present in the run directory
+        skillkits_path = run_env_dir / "skillkits"
+        if skillkits_path.exists() and skillkits_path.is_dir():
+            cmd_parts.extend(["--skill-folder", str(skillkits_path)])
 
         if entrypoint.endswith(".dph"):
             cmd_parts.extend(["--file", str(entrypoint_path)])
@@ -1871,6 +1932,14 @@ def main():
         print(f"Warning: must_execute must be a list, using empty list")
         must_execute = []
 
+    # Optional per-entrypoint must_execute mapping
+    must_execute_by_entrypoint = spec_content.get("must_execute_by_entrypoint", {})
+    if must_execute_by_entrypoint and not isinstance(must_execute_by_entrypoint, dict):
+        print(
+            "Warning: must_execute_by_entrypoint must be a dict, ignoring this field"
+        )
+        must_execute_by_entrypoint = {}
+
     # Optional threads for specifying concurrency level
     threads = spec_content.get("threads", 2)  # Default to 2 threads
     if not isinstance(threads, int) or threads <= 0:
@@ -1893,6 +1962,8 @@ def main():
 
     if must_execute:
         print(f"Must execute skills: {must_execute}")
+    if must_execute_by_entrypoint:
+        print(f"Must execute skills by entrypoint: {must_execute_by_entrypoint}")
 
     print(f"Using {threads} concurrent threads for benchmark execution")
 
@@ -1906,9 +1977,12 @@ def main():
     # Get num_run_cases from spec.txt if specified
     num_run_cases = spec_content.get("num_run_cases", None)
 
+    # Get case_filter from spec.txt if specified
+    case_filter = spec_content.get("case_filter", None)
+
     # Load benchmark using new format
     benchmark_data, benchmark_config = load_benchmark(
-        benchmark_name, root_dir, num_run_cases
+        benchmark_name, root_dir, num_run_cases, case_filter
     )
     print(
         f"Loaded {len(benchmark_data)} benchmark items from benchmark '{benchmark_name}'"
@@ -2076,9 +2150,12 @@ def main():
                     item.get(LABEL_GOLD_LABEL_FIELD, "") or ""
                 )
 
-                # Check must_execute skills first
+                # Check must_execute skills first (supports per-entrypoint override)
+                must_execute_for_entrypoint = must_execute_by_entrypoint.get(
+                    entrypoint, must_execute
+                )
                 skills_valid, missing_skills = check_must_execute_skills(
-                    vars, must_execute
+                    vars, must_execute_for_entrypoint
                 )
 
                 # Compare benchmark answer if possible

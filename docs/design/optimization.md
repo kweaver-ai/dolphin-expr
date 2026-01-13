@@ -1,10 +1,10 @@
-# Evolution-Based Optimization Framework
+# 基于进化的优化框架 (Evolution-Based Optimization Framework)
 
 统一的、可插拔的进化式优化框架，用于 sim-inject（运行时上下文优化）和 Prompt 优化（设计时源码优化）。
 
 ## 模块位置与架构
 
-本模块代码位于 `optimization/`，与 `analyst/` 平级；本文档迁移到 `docs/optimization.md`。
+本模块代码位于 `optimization/`，与 `analyst/` 平级；本文档位于 `docs/design/optimization.md`。
 
 ```
 repo/
