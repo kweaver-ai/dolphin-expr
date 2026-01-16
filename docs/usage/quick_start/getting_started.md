@@ -1,134 +1,225 @@
-# Getting Started (5-Minute Quickstart)
+# Getting Started with Dolphin Expr
 
-This guide will help you run your first experiment in 5 minutes.
+This guide will help you set up and run your first experiment in **5 minutes**.
 
 ## Prerequisites
 
-- Python 3.10+
-- Access to main dolphin repository
-- Git
+Before you begin, ensure you have:
 
-## Step 1: Clone and Setup (2 min)
+- **Dolphin Language SDK** (local development version)
+- **Python 3.8 or higher**
+- **Git** (for cloning repositories)
+- **Basic terminal/command-line knowledge**
+
+## Step 1: Set Up Dolphin SDK (2 minutes)
+
+The Dolphin Expr system requires a local development version of the Dolphin Language SDK.
+
+### Option A: Using DOLPHIN_SRC
 
 ```bash
-# Clone the repository
-git clone <repository-url> dolphin-expr
-cd dolphin-expr
+# Point to the dolphin/src directory
+export DOLPHIN_SRC=/path/to/dolphin/src
+```
 
-# Set up dolphin dependency
-export DOLPHIN_REPO=/path/to/your/dolphin/repo
-# OR
-export DOLPHIN_SRC=/path/to/your/dolphin/src
+### Option B: Using DOLPHIN_REPO
 
-# Install dependencies
+```bash
+# Point to the dolphin repository root (will automatically use /src)
+export DOLPHIN_REPO=/path/to/dolphin
+```
+
+### Verify Setup
+
+```bash
+# Run the setup script
+source ./setup_env.sh
+
+# You should see:
+# ✓ PYTHONPATH configured for dolphin SDK
+#   Dolphin source: /path/to/dolphin/src
+```
+
+**Tip**: Add the export command to your `~/.bashrc` or `~/.zshrc` to make it permanent.
+
+## Step 2: Install Dependencies (1 minute)
+
+```bash
+# Install required Python packages
 pip install -r requirements.txt
 ```
 
-## Step 2: Verify Installation (1 min)
+The system requires:
+- `pyyaml>=6.0` - Configuration file parsing
+- `pandas>=2.0` - Data analysis
+- `numpy>=1.24` - Numerical operations
+- `sqlalchemy>=2.0` - Database operations
+- `requests>=2.31` - HTTP requests
+
+## Step 3: Create Your First Experiment (1 minute)
 
 ```bash
-# List available experiments
-ls design/
-
-# Check if bird_baseline exists
-./bin/run --name bird_baseline --list-envs
+# Create a new experiment
+./bin/create --name my_first_experiment --dolphins path/to/your/dolphins_folder
 ```
 
-Expected output: Should show experiment structure or empty environment list (if never run before).
+This creates:
+- `design/my_first_experiment/` - Experiment design directory
+- `design/my_first_experiment/spec.txt` - Experiment specification
+- `design/my_first_experiment/config/` - Configuration files
+- `design/my_first_experiment/dolphins/` - DPH script files (copied from your folder)
 
-## Step 3: Run Your First Experiment (2 min)
+## Step 4: Configure Your Experiment (30 seconds)
+
+Edit `design/my_first_experiment/spec.txt`:
+
+```yaml
+# Basic configuration
+entrypoints: ["main.dph"]  # or ["agent_name"] for agent mode
+configs:
+  - default: ["qwen-plus"]
+variables:
+  query: "What is the capital of France?"
+num_samples: 1
+sample_method: SEQ
+```
+
+**Quick explanation**:
+- `entrypoints`: The DPH file or agent to run
+- `configs`: LLM model configuration
+- `variables`: Input variables for your program
+- `num_samples`: Number of times to run
+
+## Step 5: Run Your Experiment (30 seconds)
 
 ```bash
-# Run a small test with 3 cases
-# First, edit spec.txt to reduce test size
-cd design/bird_baseline
-# Modify spec.txt: set num_run_cases: 3
-
 # Run the experiment
-cd ../..
-./bin/run --name bird_baseline
+./bin/run --name my_first_experiment
 ```
 
-You should see:
-- Experiment environment created under `env/bird_baseline_<timestamp>/`
-- Progress logs for each case
-- Final summary in `run_summary.yaml`
+You'll see output like:
 
-## Step 4: Check Results (30 sec)
+```
+Experiment: my_first_experiment
+Run directory: env/my_first_experiment_20250116_140000/run_001
+Running sample 1/1...
+✓ Sample 1 completed
+Experiment completed successfully!
+```
+
+## Step 6: Check Results (30 seconds)
 
 ```bash
-# Check experiment status
-./bin/run --name bird_baseline --status
+# View experiment status
+./bin/run --name my_first_experiment --status
 
-# View the latest environment
-ls env/bird_baseline_*/
+# Check the results
+cat env/my_first_experiment_*/run_001/run_summary.yaml
 ```
 
-Expected structure:
-```
-env/bird_baseline_20250113_145500/
-├── run_001/
-│   ├── run_summary.yaml    # Results summary
-│   ├── console/            # Per-case logs
-│   └── history/            # Execution history
-└── reports/                # Analysis reports (after running analyst)
-```
+## 🎉 Success!
+
+You've successfully:
+- ✅ Set up the Dolphin Expr environment
+- ✅ Created your first experiment
+- ✅ Configured and ran it
+- ✅ Viewed the results
 
 ## Next Steps
 
-### Analyze Results
+### Run a Benchmark Test
+
 ```bash
-# Generate analysis report
-./bin/analyst bird_baseline_<timestamp> --general
+# Create a benchmark experiment
+./bin/create --name benchmark_test --dolphins path/to/dolphins
+
+# Configure with a benchmark
+cat > design/benchmark_test/spec.txt << EOF
+entrypoints: ["sql_agent"]
+configs:
+  - default: ["qwen-plus"]
+benchmark: "bird_dev"
+num_run_cases: 5
+EOF
+
+# Run it
+./bin/run --name benchmark_test
+
+# Analyze results
+./bin/analyst benchmark_test_*
 ```
 
-### Run More Cases
-Edit `design/bird_baseline/spec.txt`:
-```yaml
-num_run_cases: 10  # or -1 for all cases
-```
+### Explore Advanced Features
 
-### Try Different Configurations
-Modify variables in `spec.txt`:
-```yaml
-variables:
-  tools: ["[executeSQL]"]
-  explore_block_v2: [true]
-```
+- **Configuration Comparison**: Test multiple models simultaneously
+- **Parallel Execution**: Speed up with multi-threading
+- **Variable Tracking**: Monitor key variables during execution
+- **Intelligent Analysis**: Use LLM-powered analysis tools
 
-### Learn More
-- [Installation Guide](installation.md) - Detailed setup instructions
-- [CLI Reference](../configuration/cli_reference.md) - All available commands
-- [Experiment Configuration](../configuration/experiment_spec.md) - spec.txt format
-- [Analyst Guide](../guides/analyst_guide.md) - Advanced analysis features
+## Common First-Time Issues
 
-## Troubleshooting
+### Issue: "Cannot import dolphin"
 
-### "Command not found: dolphin"
-Set `DOLPHIN_BIN` environment variable:
+**Solution**:
 ```bash
-export DOLPHIN_BIN=/path/to/dolphin/binary
+# Make sure DOLPHIN_SRC or DOLPHIN_REPO is set
+export DOLPHIN_SRC=/path/to/dolphin/src
+source ./setup_env.sh
+
+# Verify it's in your PYTHONPATH
+echo $PYTHONPATH
 ```
 
-### "Module not found" errors
-Ensure dolphin source is in PYTHONPATH:
+### Issue: "Experiment creation failed"
+
+**Solution**:
 ```bash
-export PYTHONPATH=$DOLPHIN_SRC:$PYTHONPATH
+# Make sure your dolphins folder exists and contains .dph files
+ls path/to/dolphins_folder/*.dph
+
+# Use absolute path if relative path doesn't work
+./bin/create --name my_experiment --dolphins $PWD/path/to/dolphins
 ```
 
-### Database path errors
-Check `design/bird_baseline/config/global.yaml` and update database paths to match your system.
+### Issue: "Command not found: ./bin/run"
 
-## Quick Reference
+**Solution**:
+```bash
+# Make sure you're in the project root directory
+cd /path/to/dolphin-expr
 
-| Task | Command |
-|------|---------|
-| Run experiment | `./bin/run --name <experiment>` |
-| Check status | `./bin/run --name <experiment> --status` |
-| List environments | `./bin/run --name <experiment> --list-envs` |
-| Analyze results | `./bin/analyst <env_id> --general` |
-| Create new experiment | `./bin/create --name <name> --dolphins <path>` |
+# Make scripts executable
+chmod +x bin/*
+```
+
+## Learning Resources
+
+- **[Installation Guide](installation.md)**: Detailed installation and configuration
+- **[Complete Guide (中文)](../guides/complete_guide_zh.md)**: Comprehensive Chinese documentation
+- **[CLI Reference](../configuration/cli_reference.md)**: All command-line options
+- **[Experiment Spec Reference](../configuration/experiment_spec.md)**: spec.txt configuration details
+- **[Troubleshooting Guide](../guides/troubleshooting.md)**: Common issues and solutions
+
+## Quick Reference Card
+
+```bash
+# Environment Setup
+export DOLPHIN_SRC=/path/to/dolphin/src
+source ./setup_env.sh
+
+# Experiment Management
+./bin/create --name <name> --dolphins <path>
+./bin/run --name <name>
+./bin/run --name <name> --status
+./bin/run --name <name> --list-envs
+./bin/run --name <name> --resume-from <N>
+
+# Analysis
+./bin/analyst <experiment_env>
+./bin/analyst <experiment_env> --analysis --run <run> --case <case>
+./bin/analyst <experiment_env> --cross-run-analysis --max-accuracy 30
+```
 
 ---
 
-**Congratulations!** 🎉 You've successfully run your first dolphin-expr experiment. Check out the guides for more advanced features.
+**Ready to dive deeper?** Check out the [Complete Guide](../guides/complete_guide_zh.md) for advanced features and best practices.

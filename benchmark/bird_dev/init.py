@@ -455,6 +455,9 @@ def _convert_predicted(predicted):
     Returns:
         dict: Normalized format with 'data' field containing the converted result
     """
+    if isinstance(predicted, dict) and "output_var_value" in predicted:
+        return predicted["output_var_value"]
+
     try:
         # Try to parse as Python literal
         return ast.literal_eval(predicted)

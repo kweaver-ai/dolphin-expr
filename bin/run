@@ -43,6 +43,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import re
+import platform
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -960,7 +961,11 @@ def apply_config_to_global_yaml(config_path, config):
 
 def render_env_vars_in_file(path: Path) -> None:
     """
-    将文件内容中的 $VAR / ${VAR} 用当前进程环境变量替换。
+    Render environment variables in a text file.
+
+    This function expands:
+    - $VAR / ${VAR} using os.path.expandvars
+    - {VAR} (legacy placeholder style in some configs)
 
     说明：YAML 本身不会做环境变量展开；如果底层配置加载器不支持插值，
     则需要在运行前显式渲染（例如本函数）。
@@ -971,13 +976,32 @@ def render_env_vars_in_file(path: Path) -> None:
         return
 
     rendered = os.path.expanduser(os.path.expandvars(raw))
+
+    # Also support legacy "{VAR}" placeholders for env vars (common in older templates).
+    # Only match ALL_CAPS style names to avoid breaking normal YAML braces like "{a: b}".
+    brace_pattern = re.compile(r"\{([A-Z][A-Z0-9_]*)\}")
+
+    def _replace_brace(m: re.Match) -> str:
+        key = m.group(1)
+        val = os.environ.get(key)
+        return str(val) if val is not None else m.group(0)
+
+    rendered = brace_pattern.sub(_replace_brace, rendered)
+
     if rendered != raw:
         path.write_text(rendered, encoding="utf-8")
 
-    unresolved = sorted(set(re.findall(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}", rendered)))
+    # Fail fast if placeholders remain. This avoids confusing downstream errors
+    # like "Unauthorized" caused by sending literal placeholders as API keys.
+    unresolved_dollar = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)\}", rendered))
+    unresolved_brace = set(re.findall(r"\{([A-Z][A-Z0-9_]*)\}", rendered))
+    unresolved = sorted(unresolved_dollar | unresolved_brace)
     if unresolved:
-        print(f"Warning: {path} 仍包含未展开的环境变量占位符: {', '.join(unresolved)}")
-
+        missing = ", ".join(unresolved)
+        raise RuntimeError(
+            f"Missing required environment variables: {missing}. "
+            f"Please export them before running. File: {path}"
+        )
 
 def run_single_benchmark_case(
     root_dir,

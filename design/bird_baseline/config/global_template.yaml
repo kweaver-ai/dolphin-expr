@@ -1,0 +1,81 @@
+default: v3
+fast: qwen-turbo
+clouds:
+  default: aliyun
+  aliyun:
+    user_id: "${ALIYUN_USER_ID}"
+    api: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: "${ALIYUN_API_KEY}"
+  deepseek:
+    api: https://api.deepseek.com/beta
+    api_key: "${DEEPSEEK_API_KEY}"
+  zhipu:
+    api: https://open.bigmodel.cn
+    api_key: "${ZHIPU_API_KEY}"
+llms:
+  qwen-plus:
+    cloud: aliyun
+    id: 18928543177492439044
+    model_name: qwen-plus-2025-07-28
+    type_api: openai
+  qwen-turbo:
+    cloud: aliyun
+    id: 18928543177492439044
+    model_name: qwen-turbo-latest
+    type_api: openai
+  qwen-coder:
+    cloud: aliyun
+    id: 18928543177492439044
+    model_name: qwen3-coder-plus
+    type_api: openai
+  v3:
+    cloud: deepseek
+    id: 18928543177492439044
+    model_name: deepseek-v3
+    type_api: openai
+ 
+# Context Engineer configuration
+context_engineer:
+  import_mem: false
+  default_strategy: "truncation"
+  # Constraint configuration
+  constraints:
+    max_input_tokens: 64000        # Max input tokens
+    reserve_output_tokens: 16384   # Reserved tokens for output (overridden by model max_tokens)
+    preserve_system: true          # Whether to preserve system messages
+  # Strategy configuration (optional)
+  strategy_configs:
+    # Custom sliding-window size
+    sliding_window_15:
+      type: "sliding_window"
+      window_size: 15
+
+# Memory System configuration
+memory:
+  enabled: false
+  storage_path: "data/memory/"     # Memory storage path
+  dialog_path: "data/dialog/"      # Dialog history storage path
+  default_top_k: 10                # Default retrieval top-k
+
+# Skill loading configuration
+skill:
+  # List of skills to enable; if omitted, load all skills
+  # Supported formats:
+  # - "vm_skillkit": load VM-related skills
+  # - "search_skillkit": load search-related skills
+  # - "mcp": load all MCP servers
+  # - "mcp.filesystem": load a specific MCP server
+  # - "mcp.memory": load a specific MCP server
+  # - "mcp.fetch": load a specific MCP server
+  # - "mcp.playwright": load a specific MCP server
+  enabled_skills:
+    #- "vm_skillkit"
+    - "sql_skillkit"
+    - "ontology_skillkit"
+    - "cognitive_skillkit"
+    #- "mcp"  # Load all MCP servers
+    # Or specify individual MCP servers:
+    # - "mcp.filesystem"
+    # - "mcp.memory"
+    # - "mcp.fetch"
+    # - "mcp.playwright"

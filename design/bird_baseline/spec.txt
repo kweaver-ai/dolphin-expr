@@ -1,6 +1,5 @@
-entrypoints: ["kn_middleware"]
+entrypoints: ["kn_middleware_concept_obj"]
 configs:
-  - default: ["k2"]
   - context_engineer.default_strategy: ["level"]
 variables:
   tools: ["[executeSQL]", "[executeSQL, _cog_gen_sql]"]
@@ -14,12 +13,11 @@ variables:
   context_loader_account_id: ["2a4deda6-e481-11f0-b164-4a42a0df5a95"]
   context_loader_account_type: ["user"]
   context_loader_timeout_seconds: [30]
+case_filter:
+  db_id: ["formula_1"]
 num_samples: 1
 sample_method: SEQ
 benchmark: bird_dev
-num_run_cases: 10
+num_run_cases: 20
 output_variables: []
 threads: 1
-must_execute_by_entrypoint:
-  explore_based: ["executeSQL"]
-  kn_middleware: ["get_action_info"]

@@ -12,17 +12,18 @@
 面向用户、实验运行者和日常开发者。
 
 ### 🚀 Quick Start (快速开始)
-- [5分钟快速上手](usage/quick_start/getting_started.md): 从零到第一次成功运行。
-- [安装与环境配置](usage/quick_start/installation.md): 环境依赖、安装步骤。
+- [Getting Started](usage/quick_start/getting_started.md): 5-minute quick start guide - from zero to first successful run
+- [Installation Guide](usage/quick_start/installation.md): Detailed installation, environment setup, and troubleshooting
 
 ### 💡 Concepts (核心概念)
 - [Agent 开发规范](usage/concepts/agent_standards.md): 代码风格、日志规范、国际化要求等。
 
 ### 📖 Guides (操作指南)
-- [Analyst 快速参考](usage/guides/analyst_quick_reference.md): Analyst 工具英文快速参考（简明版）。
-- [Analyst 分析器使用指南](usage/guides/analyst_guide.md): 如何分析实验结果、使用语义裁判、注入优化等（详细中文版）。
-- [故障排除指南](usage/guides/troubleshooting.md): 常见问题与解决方案。
-- [Context Loader 调试](usage/guides/context_loader_debugging.md): Context Loader 环境变量问题专项调试。
+- [Complete Guide (完整指南)](usage/guides/complete_guide_zh.md): Comprehensive Chinese guide with all features and examples
+- [Analyst Quick Reference](usage/guides/analyst_quick_reference.md): Analyst tool quick reference (concise English version)
+- [Analyst Guide (分析器使用指南)](usage/guides/analyst_guide.md): How to analyze experiment results, use semantic comparison, injection optimization, etc. (detailed Chinese version)
+- [Troubleshooting Guide](usage/guides/troubleshooting.md): Common issues and solutions
+- [Context Loader Debugging](usage/guides/context_loader_debugging.md): Context Loader environment variable troubleshooting
 
 ### ⚙️ Configuration (配置与参考)
 - [CLI 命令行参考](usage/configuration/cli_reference.md): `run`, `create`, `analyst` 等命令的详细参数说明。

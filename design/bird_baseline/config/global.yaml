@@ -33,14 +33,7 @@ llms:
     id: 18928543177492439044
     model_name: deepseek-v3
     type_api: openai
-vm:
-  host: "localhost"
-  port: 49881
-  username: "xupeng"
-  encrypted_password: "Z0FBQUFBQm45SmJwX1p1cVZzT0Q4M3VlaWU0Smx0ek1UVzZNR2h0OElwOTY2WUNjaW15RGgtbE50WEc0azBMeWJHSVRQOEduZ25LLUdyU1NLYXNjS0RLTFVfc1R0QTJwWlE9PQ=="
-  connection_type: "ssh"
-  ssh_key_path: "/Users/xupeng/.colima/_lima/_config/user"
-
+ 
 # Context Engineer configuration
 context_engineer:
   import_mem: false
